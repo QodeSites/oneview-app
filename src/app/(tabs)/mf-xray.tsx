@@ -7,19 +7,37 @@ import { PageHeader } from '@/components/PageHeader';
 import { CapBandColor, QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { money, pct } from '@/lib/format';
-import { mockReviewData, type DriftBadge, type FundXray } from '@/lib/mock-data';
+import { mockReviewData, type CapBand, type FundXray } from '@/lib/mock-data';
 
-const BADGE_COLOR: Record<DriftBadge, string> = {
-  green: QodeColor.success,
-  amber: QodeColor.warning,
-  red: QodeColor.error,
+const GROUP_ORDER: CapBand[] = ['large', 'mid', 'small', 'unclassified'];
+const GROUP_LABEL: Record<CapBand, string> = {
+  large: 'Large Cap Funds',
+  mid: 'Mid Cap Funds',
+  small: 'Small Cap Funds',
+  micro: 'Micro Cap Funds',
+  unclassified: 'Debt, Gold & Other Funds',
 };
+
+/** A fund's own dominant exposure — same rule qode-oneview's MfXray.tsx groups by. */
+function dominantBand(fund: FundXray): CapBand {
+  return [...fund.exposure].sort((a, b) => b.percent - a.percent)[0]?.band ?? 'unclassified';
+}
 
 /**
  * MF X-Ray — MVP preview with dummy data shaped like the real `FundXray[]`
- * contract. See qode-oneview's MfXray.tsx for the real screen: every fund
- * grouped by its dominant cap exposure, drawn as a split bar; tapping one
- * opens the real companies disclosed inside it.
+ * contract. Matches qode-oneview's MfXray.tsx: funds grouped by dominant
+ * cap exposure under a heading, drawn as a split bar; tapping one opens
+ * the real companies disclosed inside it.
+ *
+ * Deliberately NOT shown, matching the real screen: a drift badge
+ * (green/amber/red) or a verdict-style headline ("30% outside mandate").
+ * qode-oneview's own file comment explains why it was removed from web —
+ * "a judgement about a fund manager's choices rather than a fact about
+ * the reader's money" — and `FundXray` still carries `badge`/`headline`
+ * only because the QA exports report them, not because a screen reads
+ * them. What's shown instead: the exposure bars themselves (the fact),
+ * and — once expanded — the same factual sentence web shows for a pinned
+ * fund ("largest disclosed positions outside its mandate: X, Y").
  */
 export default function MfXrayScreen() {
   const funds = mockReviewData.xray.funds;
@@ -53,14 +71,23 @@ export default function MfXrayScreen() {
             {mockReviewData.xray.fundsResolved} of {mockReviewData.xray.fundsHeld} funds looked through
           </Text>
 
-          {funds.map((f) => (
-            <FundCard
-              key={f.id}
-              fund={f}
-              open={expanded === f.id}
-              onToggle={() => setExpanded((cur) => (cur === f.id ? null : f.id))}
-            />
-          ))}
+          {GROUP_ORDER.flatMap((band) => {
+            const members = funds.filter((f) => dominantBand(f) === band);
+            if (!members.length) return [];
+            return [
+              <Text key={`head-${band}`} style={styles.groupHeading}>
+                {GROUP_LABEL[band]}
+              </Text>,
+              ...members.map((f) => (
+                <FundCard
+                  key={f.id}
+                  fund={f}
+                  open={expanded === f.id}
+                  onToggle={() => setExpanded((cur) => (cur === f.id ? null : f.id))}
+                />
+              )),
+            ];
+          })}
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
@@ -70,19 +97,12 @@ export default function MfXrayScreen() {
 function FundCard({ fund, open, onToggle }: { fund: FundXray; open: boolean; onToggle: () => void }) {
   return (
     <Pressable style={styles.card} onPress={onToggle}>
-      <View style={styles.cardHead}>
-        <View style={styles.cardHeadText}>
-          <Text style={styles.fundName} numberOfLines={2}>
-            {fund.name}
-          </Text>
-          <Text style={styles.fundMeta}>
-            {fund.mandate ?? 'No stated mandate'} · {money(fund.value)}
-          </Text>
-        </View>
-        <View style={[styles.badge, { backgroundColor: `${BADGE_COLOR[fund.badge]}22` }]}>
-          <View style={[styles.badgeDot, { backgroundColor: BADGE_COLOR[fund.badge] }]} />
-        </View>
-      </View>
+      <Text style={styles.fundName} numberOfLines={2}>
+        {fund.name}
+      </Text>
+      <Text style={styles.fundMeta}>
+        {fund.mandate ?? 'No stated mandate'} · {money(fund.value)}
+      </Text>
 
       <View style={styles.exposureBar}>
         {fund.exposure.map((e) => (
@@ -100,10 +120,17 @@ function FundCard({ fund, open, onToggle }: { fund: FundXray; open: boolean; onT
         ))}
       </View>
 
-      <Text style={styles.headline}>{fund.headline}</Text>
-
       {open ? (
         <View style={styles.holdings}>
+          {/* Fact, not a verdict — same sentence qode-oneview's own
+              pinned-fund detail shows, not a "30% outside mandate" grade. */}
+          <Text style={styles.holdingsNote}>
+            You hold {money(fund.value)} of this fund
+            {fund.culprits.length
+              ? `. Largest disclosed positions outside its mandate: ${fund.culprits.join(', ')}.`
+              : '.'}
+            {fund.asOf ? ` Disclosure as of ${fund.asOf}.` : ''}
+          </Text>
           <Text style={styles.holdingsLabel}>Largest disclosed holdings</Text>
           {fund.holdings.map((h) => (
             <View key={h.name} style={styles.holdingRow}>
@@ -114,7 +141,6 @@ function FundCard({ fund, open, onToggle }: { fund: FundXray; open: boolean; onT
               <Text style={styles.holdingPct}>{pct(h.percent, 1)}</Text>
             </View>
           ))}
-          {fund.asOf ? <Text style={styles.asOf}>Disclosed portfolio as of {fund.asOf}</Text> : null}
         </View>
       ) : null}
     </Pressable>
@@ -127,18 +153,6 @@ const styles = StyleSheet.create({
   },
   safeArea: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    paddingHorizontal: QodeSpace[5],
-    paddingTop: QodeSpace[4],
-  },
-  title: {
-    fontFamily: QodeFont.display,
-    fontSize: 26,
-    color: QodeColor.cream,
   },
   dummyBadge: {
     fontFamily: QodeFont.uiRegular,
@@ -164,13 +178,13 @@ const styles = StyleSheet.create({
     borderRadius: QodeRadius.lg,
     padding: QodeSpace[4],
   },
-  cardHead: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: QodeSpace[3],
-  },
-  cardHeadText: {
-    flex: 1,
+  groupHeading: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 11,
+    color: QodeColor.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: QodeSpace[2],
   },
   fundName: {
     fontFamily: QodeFont.ui,
@@ -182,18 +196,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: QodeColor.textMuted,
     marginTop: 2,
-  },
-  badge: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
   },
   exposureBar: {
     flexDirection: 'row',
@@ -213,12 +215,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: QodeColor.textMuted,
   },
-  headline: {
+  holdingsNote: {
     fontFamily: QodeFont.uiRegular,
     fontSize: 13,
     lineHeight: 18,
     color: QodeColor.textSecondary,
-    marginTop: QodeSpace[3],
+    marginBottom: QodeSpace[2],
   },
   holdings: {
     marginTop: QodeSpace[4],
@@ -255,11 +257,5 @@ const styles = StyleSheet.create({
     fontFamily: QodeFont.ui,
     fontSize: 12,
     color: QodeColor.textSecondary,
-  },
-  asOf: {
-    fontFamily: QodeFont.uiRegular,
-    fontSize: 11,
-    color: QodeColor.textMuted,
-    marginTop: QodeSpace[2],
   },
 });

@@ -1,11 +1,14 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PageHeader } from '@/components/PageHeader';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { mockReviewData } from '@/lib/mock-data';
+import { getStorageItem, setStorageItem } from '@/lib/storage';
+
+const ANSWERS_KEY = 'qode.riskProfile.answers';
 
 interface Option {
   value: string;
@@ -85,19 +88,46 @@ const QUESTIONS: Question[] = [
 ];
 
 /**
- * Risk Profile — MVP preview, matching qode-oneview's RiskProfile.tsx: two
- * states, "not yet completed" (the six questions) and "completed" (a
- * summary with Edit). Mock/local-state only — no fetch, no persistence
- * across a reload. Defaults to the unanswered state so the full flow
- * (answer all six → see the summary) is reachable for the demo.
+ * Risk Profile — matching qode-oneview's own live behavior: collapsed by
+ * default to a summary + "Edit my answers" once answers exist, quiz only
+ * shown when there are none yet or the reader explicitly asks to edit.
+ *
+ * Answers persist locally (src/lib/storage.ts) across an app restart —
+ * there is no backend yet (mobile-profile's `/api/mobile/risk-profile`
+ * isn't built), but a real, persisted-feeling completion state is still
+ * closer to the truth than resetting to a blank quiz every time the app
+ * opens, which is what an in-memory-only `useState` would do.
  */
 export default function RiskProfileScreen() {
-  const [editing, setEditing] = useState(true);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  // `null` distinguishes "still reading storage" from "read, genuinely no
+  // saved answers yet" — the same reason AuthProvider's `session` starts
+  // `undefined` rather than defaulting straight to an empty object.
+  const [answers, setAnswers] = useState<Record<string, string> | null>(null);
+  const [editing, setEditing] = useState(false);
 
-  const answeredCount = QUESTIONS.filter((q) => answers[q.key]).length;
+  useEffect(() => {
+    getStorageItem(ANSWERS_KEY)
+      .then((raw) => {
+        const saved = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+        setAnswers(saved);
+        setEditing(Object.keys(saved).length < QUESTIONS.length);
+      })
+      .catch(() => {
+        setAnswers({});
+        setEditing(true);
+      });
+  }, []);
+
+  const liveAnswers = answers ?? {};
+  const answeredCount = QUESTIONS.filter((q) => liveAnswers[q.key]).length;
   const remaining = QUESTIONS.length - answeredCount;
   const allAnswered = remaining === 0;
+
+  function selectAnswer(key: string, value: string) {
+    const next = { ...liveAnswers, [key]: value };
+    setAnswers(next);
+    void setStorageItem(ANSWERS_KEY, JSON.stringify(next));
+  }
 
   return (
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
@@ -128,11 +158,11 @@ export default function RiskProfileScreen() {
                   </Text>
                   <View style={styles.pillRow}>
                     {q.options.map((o) => {
-                      const on = answers[q.key] === o.value;
+                      const on = liveAnswers[q.key] === o.value;
                       return (
                         <Pressable
                           key={o.value}
-                          onPress={() => setAnswers((prev) => ({ ...prev, [q.key]: o.value }))}
+                          onPress={() => selectAnswer(q.key, o.value)}
                           style={[styles.pill, on && styles.pillOn]}>
                           <Text style={[styles.pillText, on && styles.pillTextOn]}>{o.label}</Text>
                         </Pressable>
@@ -173,7 +203,7 @@ export default function RiskProfileScreen() {
                   <View key={q.key} style={styles.answerRow}>
                     <Text style={styles.answerQuestion}>{q.question}</Text>
                     <Text style={styles.answerValue}>
-                      {q.options.find((o) => o.value === answers[q.key])?.label ?? '—'}
+                      {q.options.find((o) => o.value === liveAnswers[q.key])?.label ?? '—'}
                     </Text>
                   </View>
                 ))}
