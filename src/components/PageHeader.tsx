@@ -1,0 +1,104 @@
+import { Link } from 'expo-router';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+import { QodeColor, QodeFont, QodeSpace } from '@/constants/qode-theme';
+import { dayLabel } from '@/lib/format';
+
+/**
+ * The page header every review screen carries — ported from
+ * qode-oneview's Shell.tsx: a title + one-line subtitle per screen (same
+ * copy, from Shell.tsx's own PAGES array), the "priced as at" date with a
+ * refresh action, and the "data looks incomplete" banner pointing at the
+ * statement-upload recovery path (Screen 12, SPEC-mobile-profile.md).
+ *
+ * Deliberately NOT included: the QA-mode test-account panel with CSV/JSON
+ * exports and the formula-by-formula disclosure — those render only
+ * behind `isQaMode()` in the real app (review/layout.tsx), gated to
+ * internal accounts. They're debugging tooling, not a customer-facing
+ * screen, so they don't belong in this preview.
+ *
+ * There used to be a "Fetch latest" text link here too. Every screen now
+ * wraps its ScrollView in a pull-to-refresh RefreshControl instead — one
+ * affordance for refreshing, not a small text link plus a gesture that did
+ * the same thing.
+ */
+export function PageHeader({
+  title,
+  subtitle,
+  navAsOf,
+}: {
+  title: string;
+  subtitle: string;
+  navAsOf: string | null;
+}) {
+  return (
+    <View style={styles.container}>
+      <View style={styles.titleRow}>
+        <View style={styles.titleCol}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
+        </View>
+        <View style={styles.metaCol}>
+          <Text style={styles.metaText}>
+            {navAsOf ? `Priced as at · ${dayLabel(navAsOf)}` : 'No reporting date available'}
+          </Text>
+        </View>
+      </View>
+
+      <Link href="/holdings" asChild>
+        <Pressable style={styles.dataBar}>
+          <Text style={styles.dataBarText}>
+            Data looks incomplete? Upload your CAMS/KFin or NSDL/CDSL statement →
+          </Text>
+        </Pressable>
+      </Link>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    gap: QodeSpace[3],
+  },
+  titleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: QodeSpace[3],
+  },
+  titleCol: {
+    flex: 1,
+  },
+  title: {
+    fontFamily: QodeFont.display,
+    fontSize: 26,
+    color: QodeColor.cream,
+  },
+  subtitle: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: QodeColor.textMuted,
+    marginTop: 2,
+  },
+  metaCol: {
+    alignItems: 'flex-end',
+  },
+  metaText: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 11,
+    color: QodeColor.textMuted,
+  },
+  dataBar: {
+    borderWidth: 1,
+    borderColor: QodeColor.surfaceBorder,
+    borderRadius: 10,
+    paddingVertical: QodeSpace[2],
+    paddingHorizontal: QodeSpace[3],
+  },
+  dataBarText: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 12,
+    color: QodeColor.textSecondary,
+  },
+});
