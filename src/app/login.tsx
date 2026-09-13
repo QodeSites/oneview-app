@@ -17,11 +17,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BrandMark } from '@/components/auth/BrandMark';
-import { OtpEntryForm } from '@/components/auth/OtpEntryForm';
+import { OtpEntryForm, type VerifyOutcome } from '@/components/auth/OtpEntryForm';
 import { PhoneEntryForm } from '@/components/auth/PhoneEntryForm';
 import { StepDots } from '@/components/auth/StepDots';
 import { TrustBadges } from '@/components/auth/TrustBadges';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
+import { sendOtp, verifyOtp } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 type Step = 'phone' | 'otp' | 'no-account';
@@ -31,13 +32,15 @@ type Step = 'phone' | 'otp' | 'no-account';
  * (`step: "phone" | "otp"`, plus a `noAccount` flag): phone → OTP → tabs,
  * with a "no account" branch.
  *
- * The OTP itself is real generation + real comparison (`generateOtp`,
- * `verify` below) — there is no backend yet (that's SPEC-mobile-auth.md's
- * job) and therefore no SMS provider to actually deliver it, so
- * OtpEntryForm shows the generated code directly on screen instead of
- * texting it. `000000` is the one remaining fixed test code, standing in
- * for "verified but no account" since there is no real backend to ask
- * (see the comment on `verify`).
+ * Real qode-oneview backend now (src/lib/api.ts) — `POST /api/auth/send`
+ * genuinely texts a code via 2Factor, `/verify` genuinely checks it against
+ * the real database and says whether the number has an account. Note this
+ * means: qode-oneview's own `normalisePhone` only accepts a 10-digit Indian
+ * mobile number, so PhoneEntryForm's worldwide country picker will get a
+ * real "Enter a 10-digit Indian mobile number" error back from the server
+ * for anywhere else — shown as-is (see `sendError` below) rather than
+ * papered over, since that is a real, current constraint of the backend,
+ * not a bug in this screen.
  *
  * The brand mark, step dots and trust badges are chrome around that same
  * state machine — see qode-oneview's own login page (src/app/login/
@@ -51,18 +54,23 @@ export default function LoginScreen() {
   const { signIn } = useAuth();
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
-  /**
-   * The code this "send" actually generated — real generation, real
-   * comparison in `verify` below, just not delivered by SMS. There is no
-   * SMS provider wired up yet (that needs a backend + provider
-   * credentials, out of this screen's reach), so OtpEntryForm shows this
-   * directly on screen instead. `null` means no code has been generated
-   * for the current phone yet (nothing to verify against).
-   */
-  const [otp, setOtp] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
 
-  function generateOtp(): string {
-    return String(Math.floor(100000 + Math.random() * 900000));
+  async function requestCode(p: string) {
+    setSending(true);
+    setSendError(null);
+    try {
+      const result = await sendOtp(p);
+      if (result.ok) {
+        setPhone(p);
+        setStep('otp');
+      } else {
+        setSendError(result.error);
+      }
+    } finally {
+      setSending(false);
+    }
   }
 
   /**
@@ -114,32 +122,25 @@ export default function LoginScreen() {
       if (step === 'phone') return false;
       setStep('phone');
       setPhone('');
-      setOtp(null);
       return true;
     });
     return () => sub.remove();
   }, [step]);
 
-  function verify(code: string): 'ok' | 'no-account' | 'wrong' {
-    // Deliberate test hook, not a real backend distinction: there is no
-    // way to know whether a number is "registered" without a real
-    // backend, so this one fixed code stands in for that branch — same
-    // idea as qode-oneview's own documented `123456` test bypass
-    // (SPEC-mobile-auth.md), just repurposed since `123456` itself is now
-    // a real, freshly generated code the reader has to actually match.
-    if (code === '000000') {
+  async function verify(code: string): Promise<VerifyOutcome> {
+    const result = await verifyOtp(code);
+    if (result.status === 'wrong') return result;
+    if (!result.registered) {
       setStep('no-account');
-      return 'ok';
+      return { status: 'no-account' };
     }
-    if (otp !== null && code === otp) {
-      // Fire-and-forget: OtpEntryForm's contract is synchronous (see its
-      // own doc comment), and the write to SecureStore has no reason to
-      // block the navigation that follows it.
-      void signIn(phone);
-      router.replace('/performance');
-      return 'ok';
-    }
-    return 'wrong';
+    // Fire-and-forget: this is the app's own local "am I signed in"
+    // flag (src/lib/auth.tsx), separate from the real session cookie
+    // `/api/auth/verify` just set — the write has no reason to block
+    // the navigation that follows it.
+    void signIn(phone);
+    router.replace('/performance');
+    return { status: 'ok' };
   }
 
   const stepIndex = step === 'phone' ? 0 : 1;
@@ -174,13 +175,8 @@ export default function LoginScreen() {
                 <Text style={styles.subtitle}>
                   Everything you linked — stocks, funds, deposits and your bank — read back to you in one place.
                 </Text>
-                <PhoneEntryForm
-                  onSubmit={(p) => {
-                    setPhone(p);
-                    setOtp(generateOtp());
-                    setStep('otp');
-                  }}
-                />
+                <PhoneEntryForm onSubmit={requestCode} busy={sending} />
+                {sendError ? <Text style={styles.error}>{sendError}</Text> : null}
                 <Text style={styles.helper}>
                   We send a one-time code to your phone. It&apos;s the same number you used when you linked your
                   accounts.
@@ -196,12 +192,10 @@ export default function LoginScreen() {
                 <OtpEntryForm
                   phone={phone}
                   onSubmit={verify}
-                  devCode={otp ?? undefined}
-                  onResend={() => setOtp(generateOtp())}
+                  onResend={() => void requestCode(phone)}
                   onChangeNumber={() => {
                     setStep('phone');
                     setPhone('');
-                    setOtp(null);
                   }}
                 />
               </View>
@@ -230,7 +224,6 @@ export default function LoginScreen() {
                   onPress={() => {
                     setStep('phone');
                     setPhone('');
-                    setOtp(null);
                   }}>
                   <Text style={styles.quietButtonText}>Try a different number</Text>
                 </Pressable>
@@ -262,6 +255,13 @@ const styles = StyleSheet.create({
   },
   stepBlock: {
     gap: QodeSpace[4],
+  },
+  error: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 13,
+    color: QodeColor.error,
+    textAlign: 'center',
+    marginTop: -QodeSpace[2],
   },
   title: {
     fontFamily: QodeFont.display,

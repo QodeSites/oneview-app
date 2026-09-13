@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { logout as apiLogout } from '@/lib/api';
 import { deleteStorageItem, getStorageItem, setStorageItem } from '@/lib/storage';
 
 const SESSION_KEY = 'qode.session.phone';
@@ -24,18 +25,18 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
- * The mobile side of SPEC-mobile-auth.md's "working model" — a real,
- * persisted session, not a screen-to-screen prop. There is no backend yet
- * (qode-oneview's own dual-mode bearer-token routes described in that spec
- * aren't built), so this is intentionally local-only: verifying an OTP
- * writes a session that survives an app restart, and Profile can actually
- * sign out of it, rather than "you're logged in because you're on this
- * screen" with nothing to sign out of.
+ * The mobile side of "am I signed in" — a real, persisted session, not a
+ * screen-to-screen prop. Login now calls qode-oneview's real
+ * `/api/auth/send` and `/verify` (src/lib/api.ts), which mint a REAL
+ * session cookie server-side; this is a separate, local-only flag layered
+ * on top, used purely for the app's own routing (index.tsx: dashboard vs.
+ * login) so it survives an app restart without needing to ping the server
+ * first, and so Profile/More has something concrete to sign out of.
  *
  * Storage (src/lib/storage.ts) is SecureStore (Keychain/Keystore-backed)
- * on iOS/Android rather than AsyncStorage — the spec's own Open Question
- * #4 recommends exactly this for wherever the eventual bearer token
- * lands, and a phone number is exactly as sensitive as that token will be.
+ * on iOS/Android rather than AsyncStorage — SPEC-mobile-auth.md's Open
+ * Question #4 recommends exactly this for wherever a bearer token would
+ * land, and a phone number is exactly as sensitive as that token would be.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -54,6 +55,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession({ phone });
       },
       async signOut() {
+        // Real call to `POST /api/auth/logout` (src/lib/api.ts), clearing
+        // the actual session cookie server-side — best-effort, since the
+        // local session below is cleared regardless of whether it succeeds.
+        await apiLogout();
         await deleteStorageItem(SESSION_KEY);
         setSession(null);
       },

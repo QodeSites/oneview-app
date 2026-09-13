@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BrandMark } from '@/components/auth/BrandMark';
 import { StepDots } from '@/components/auth/StepDots';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
+import { registerAccount } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -17,7 +18,11 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  * account yet, matching qode-oneview's complete-profile/DetailsForm.tsx
  * (name + email, no PAN here — PAN comes from the AA consent journey
  * itself, per that file's own comment on why it isn't asked twice).
- * Mock/local-state only, no fetch — navigates straight to the tabs.
+ *
+ * Real call now (src/lib/api.ts, `POST /api/auth/register`) — it needs the
+ * session cookie `/api/auth/verify` already set on the previous screen, so
+ * this only works as the very next step after a real OTP verify, same as
+ * on web.
  */
 export default function RegisterScreen() {
   const router = useRouter();
@@ -25,10 +30,29 @@ export default function RegisterScreen() {
   const { phone } = useLocalSearchParams<{ phone?: string }>();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const nameValid = name.trim().length >= 2;
   const emailValid = EMAIL_RE.test(email.trim());
-  const canSubmit = nameValid && emailValid;
+  const canSubmit = nameValid && emailValid && !saving;
+
+  async function submit() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await registerAccount(name.trim(), email.trim());
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      void signIn(phone ?? '');
+      router.replace('/performance');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
@@ -68,6 +92,8 @@ export default function RegisterScreen() {
               maxLength={254}
             />
 
+            {error ? <Text style={styles.error}>{error}</Text> : null}
+
             <Pressable
               disabled={!canSubmit}
               style={({ pressed }) => [
@@ -75,12 +101,8 @@ export default function RegisterScreen() {
                 !canSubmit && styles.buttonDisabled,
                 pressed && styles.buttonPressed,
               ]}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-                void signIn(phone ?? '');
-                router.replace('/performance');
-              }}>
-              <Text style={styles.buttonText}>Continue</Text>
+              onPress={() => void submit()}>
+              <Text style={styles.buttonText}>{saving ? 'Saving…' : 'Continue'}</Text>
             </Pressable>
           </SafeAreaView>
         </ScrollView>
@@ -140,6 +162,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: QodeColor.textPrimary,
     marginBottom: QodeSpace[4],
+  },
+  error: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 13,
+    color: QodeColor.error,
+    textAlign: 'center',
+    marginBottom: QodeSpace[2],
   },
   button: {
     backgroundColor: QodeColor.accent,
