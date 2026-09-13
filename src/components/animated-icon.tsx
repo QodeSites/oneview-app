@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import * as SplashScreen from 'expo-splash-screen';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Dimensions, StyleSheet, View } from 'react-native';
 import Animated, { Easing, Keyframe } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -11,6 +11,23 @@ const DURATION = 600;
 export function AnimatedSplashOverlay() {
   const [animate, setAnimate] = useState(false);
   const [visible, setVisible] = useState(true);
+
+  /**
+   * Safety net for the `withCallback` below: if that reanimated/worklet
+   * callback ever fails to bridge back to the JS thread (device/build
+   * dependent — not something this file can guarantee), `visible` would
+   * never flip to false and this overlay stays mounted forever. Once its
+   * own fade finishes it's invisible (opacity animates to 0), but it's
+   * still a full-screen, `zIndex: 1000` absolute view — every touch on the
+   * real screen underneath (the phone field included) would land on this
+   * instead and go nowhere. A plain JS timer has no dependency on
+   * reanimated/worklets working correctly, so it can't share that failure.
+   */
+  useEffect(() => {
+    if (!animate) return;
+    const id = setTimeout(() => setVisible(false), DURATION + 400);
+    return () => clearTimeout(id);
+  }, [animate]);
 
   if (!visible) return null;
 
@@ -37,6 +54,7 @@ export function AnimatedSplashOverlay() {
 
   return animate ? (
     <Animated.View
+      pointerEvents="none"
       entering={splashKeyframe.duration(DURATION).withCallback((finished) => {
         'worklet';
         if (finished) {
