@@ -90,11 +90,10 @@ export function useRemoteData<T>(fetcher: () => Promise<ApiResult<T>>) {
     }, [run]),
   );
 
-  return {
-    state,
-    refreshing,
-    reload: () => run('initial'),
-    refresh: () => run('refresh'),
-    revalidate: () => run('silent'),
-  };
+  // Stable references, so callers can use these in effect dependencies.
+  const reload = useCallback(() => run('initial'), [run]);
+  const refresh = useCallback(() => run('refresh'), [run]);
+  const revalidate = useCallback(() => run('silent'), [run]);
+
+  return { state, refreshing, reload, refresh, revalidate };
 }

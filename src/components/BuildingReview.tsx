@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
-import type { BuildingState } from '@/lib/reviewApi';
+import type { AnalysisState, BuildingState } from '@/lib/reviewApi';
 
 /**
  * Ported from qode-oneview's `src/components/review/BuildingReview.tsx` —
@@ -69,6 +69,83 @@ export function BuildingReview({ building }: { building: BuildingState }) {
         <Text style={styles.foot}>
           Pull down to check again — this opens on its own the moment your data arrives.
         </Text>
+      </View>
+    </View>
+  );
+}
+
+/** After this long, the building screen adds a "taking longer" note with a way to reach us. */
+const BUILD_SLOW_MS = 5 * 60_000;
+
+function openWhatsApp(text: string) {
+  Linking.openURL(`https://wa.me/${CONTACT_PHONE.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`).catch(
+    () => {},
+  );
+}
+
+/**
+ * "Building your review" — web BuildingReview's building phase. The
+ * accounts are in and the first analysis is running; the dashboard stays
+ * hidden until it's complete, so a first-time customer never sees the donut
+ * beside empty charts and zero values.
+ *
+ * The meter follows web: real progress from finished engine stages, with a
+ * time-based floor creeping toward 88% so it never looks frozen, never below
+ * 8% and never 100% while still here.
+ */
+export function AnalysisBuilding({ analysis }: { analysis: AnalysisState }) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    const base = analysis.startedAt ? Date.parse(analysis.startedAt) : Date.now();
+    const tick = () => setElapsedSeconds(Math.max(0, Math.round((Date.now() - base) / 1000)));
+    tick();
+    const clock = setInterval(tick, 1000);
+    return () => clearInterval(clock);
+  }, [analysis.startedAt]);
+
+  const slicePct = Math.round((analysis.done / Math.max(1, analysis.total)) * 100);
+  const creepPct = Math.round(88 * (1 - Math.exp(-elapsedSeconds / 55)));
+  const pct = Math.min(96, Math.max(8, slicePct, creepPct));
+  const stage =
+    pct < 35 ? 'Reading what you hold' : pct < 70 ? 'Valuing it against the market' : 'Working out your market-cap split';
+  const slow = elapsedSeconds * 1000 > BUILD_SLOW_MS;
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.card}>
+        <Text style={styles.title}>Building your review</Text>
+        <Text style={styles.body}>
+          Accounts are in. Pricing every holding against the market — a couple of minutes, first time only.
+        </Text>
+        <View
+          style={styles.meterTrack}
+          accessibilityRole="progressbar"
+          accessibilityLabel="Building your review"
+          accessibilityValue={{ min: 0, max: 100, now: pct }}>
+          <View style={[styles.meterFill, { width: `${pct}%` }]} />
+        </View>
+        <View style={styles.meterRow}>
+          <Text style={styles.stage}>{stage}…</Text>
+          <Text style={styles.elapsed}>{pct}%</Text>
+        </View>
+        <Text style={styles.foot}>
+          {elapsedSeconds > 0 ? `${elapsedSeconds}s elapsed · ` : ''}Your dashboard opens by itself when it&apos;s
+          ready. You can close the app and come back.
+        </Text>
+        {slow ? (
+          <>
+            <Text style={styles.explain}>
+              This is taking longer than usual. We&apos;re still working on it — if it doesn&apos;t open soon,
+              message us and we&apos;ll look into it.
+            </Text>
+            <Pressable
+              style={styles.linkAgainButton}
+              onPress={() => openWhatsApp("Hi, my OneView dashboard is still building and I need a hand.")}>
+              <Text style={styles.linkAgainButtonText}>Message us on WhatsApp</Text>
+            </Pressable>
+          </>
+        ) : null}
       </View>
     </View>
   );
@@ -162,6 +239,24 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: QodeRadius.pill,
     backgroundColor: QodeColor.accent,
+  },
+  meterFill: {
+    height: '100%',
+    borderRadius: QodeRadius.pill,
+    backgroundColor: QodeColor.accent,
+  },
+  meterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: QodeSpace[2],
+    marginTop: QodeSpace[2],
+  },
+  stage: {
+    flex: 1,
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 12,
+    color: QodeColor.textSecondary,
   },
   elapsed: {
     fontFamily: QodeFont.ui,

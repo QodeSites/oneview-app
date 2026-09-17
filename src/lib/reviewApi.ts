@@ -145,10 +145,26 @@ export interface BuildingState {
   startedAt: string | null;
 }
 
+/**
+ * The first analysis after holdings arrive. While `building` is true the
+ * dashboard isn't ready (charts and values still missing), so the app shows
+ * "Building your review" instead of the tabs — same rule as web's layout.
+ * `done`/`total` are the engine stages finished so far. `null` when the
+ * account has no holdings yet.
+ */
+export interface AnalysisState {
+  building: boolean;
+  done: number;
+  total: number;
+  startedAt: string | null;
+}
+
 export interface ReviewPayload {
   data: ReviewData;
   presence: PresenceSummary;
   building: BuildingState | null;
+  /** Optional: a server without this field never reports a build in progress. */
+  analysis?: AnalysisState | null;
 }
 
 export function getReview(): Promise<ApiResult<ReviewPayload>> {

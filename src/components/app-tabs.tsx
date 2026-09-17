@@ -9,7 +9,7 @@ import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from '
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HoldingsIcon, MfXrayIcon, MoreIcon, PerformanceIcon, SegmentsIcon } from './TabIcons';
-import { BuildingReview } from './BuildingReview';
+import { AnalysisBuilding, BuildingReview } from './BuildingReview';
 import { ErrorView, LoadingView } from './RemoteStateView';
 import { NothingYet } from './NothingYet';
 
@@ -55,6 +55,8 @@ const FLOATING_MARGIN = 16;
 // flat rail color instead of a see-through bar.
 const HAS_LIQUID_GLASS = Platform.OS === 'ios' && isLiquidGlassAvailable();
 
+const WAIT_POLL_MS = 4000;
+
 export default function AppTabs() {
   const pathname = usePathname();
   const activeIndex = Math.max(
@@ -84,7 +86,19 @@ export default function AppTabs() {
   // (loading, error, nothing linked, still fetching) the reader sees a
   // single full screen with no way into the other tabs or Profile.
   const review = useRemoteData(getReview);
-  const showTabs = review.state.status === 'ready' && !review.state.data.presence.isEmpty;
+  const ready = review.state.status === 'ready' ? review.state.data : null;
+  // Still waiting on the aggregator, or on the first analysis.
+  const waiting = ready !== null && (ready.building !== null || ready.analysis?.building === true);
+  const showTabs = ready !== null && !ready.presence.isEmpty && ready.analysis?.building !== true;
+
+  // Web's wait screen re-checks every 4 seconds; the hook's own 30s re-check
+  // is too slow for a build that finishes in a couple of minutes.
+  const { revalidate } = review;
+  useEffect(() => {
+    if (!waiting) return;
+    const id = setInterval(revalidate, WAIT_POLL_MS);
+    return () => clearInterval(id);
+  }, [waiting, revalidate]);
 
   return (
     <Tabs>
@@ -203,6 +217,22 @@ function TabsGate({ review }: { review: ReturnType<typeof useRemoteData<ReviewPa
           contentContainerStyle={styles.gateScroll}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
           <NothingYet presence={state.data.presence} />
+          <GateSignOut />
+        </ScrollView>
+      </LinearGradient>
+    );
+  }
+
+  // Holdings are in but the first analysis isn't finished — same gate as
+  // web's layout. Showing the tabs now meant the allocation donut beside
+  // empty charts and zero fund values (reported 17 Sep).
+  if (state.data.analysis?.building) {
+    return (
+      <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={styles.gateScroll}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
+          <AnalysisBuilding analysis={state.data.analysis} />
           <GateSignOut />
         </ScrollView>
       </LinearGradient>

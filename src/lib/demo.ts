@@ -49,6 +49,7 @@ export const DEMO_REVIEW_PAYLOAD: ReviewPayload = {
   data: mockReviewData,
   presence: DEMO_PRESENCE,
   building: null,
+  analysis: { building: false, done: 4, total: 4, startedAt: null },
 };
 
 export const DEMO_PERFORMANCE_PAYLOAD: PerformancePayload = {
