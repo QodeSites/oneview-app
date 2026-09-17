@@ -8,7 +8,8 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
-import { StyleSheet, useColorScheme } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Platform, StyleSheet, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
@@ -21,6 +22,9 @@ import { AppLockProvider } from '@/lib/app-lock';
 import { AuthProvider } from '@/lib/auth';
 
 SplashScreen.preventAutoHideAsync();
+
+/** Longest the launch screen waits for the brand fonts. */
+const FONT_WAIT_MS = 3000;
 
 /**
  * The root view's background, shown behind/before any screen paints (e.g.
@@ -47,17 +51,26 @@ SystemUI.setBackgroundColorAsync(QodeColor.greenDeep);
  * outside the tab set (like login.tsx) with nowhere to render — Expo's
  * static export produced byte-identical output for `/` and `/login`.
  *
- * Kicks off loading the Curtain's brand fonts (see constants/qode-theme.ts)
- * but does NOT block rendering on them — RN falls back to the system font
- * for one frame if a screen renders before they're ready, then re-renders
- * once loaded. Blocking the whole app on this (returning null from the
- * root layout) broke static export for every route, not just the
- * Qode-styled ones, so it isn't worth it for a decorative heading font.
+ * Waits for the Curtain's brand fonts (see constants/qode-theme.ts) before
+ * drawing anything on iOS and Android, while the launch screen is still up.
+ * Drawing first meant a label was laid out in the system font and, on
+ * Android, not always re-measured once the wider Lato Bold arrived — the
+ * welcome screen's "Next" and "Skip" showed as "Nex" and "Ski" (17 Sep).
+ * Web doesn't wait: returning null there broke the static export for every
+ * route. A font that fails to load, or takes over 3 seconds, doesn't hold
+ * the app up; it falls back to the system font.
  */
 export default function RootLayout() {
   const colorScheme = useColorScheme();
-  usePlayfairFonts({ PlayfairDisplay_500Medium, PlayfairDisplay_700Bold });
-  useLatoFonts({ Lato_400Regular, Lato_700Bold });
+  const [playfairLoaded, playfairError] = usePlayfairFonts({ PlayfairDisplay_500Medium, PlayfairDisplay_700Bold });
+  const [latoLoaded, latoError] = useLatoFonts({ Lato_400Regular, Lato_700Bold });
+  const [fontWaitOver, setFontWaitOver] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setFontWaitOver(true), FONT_WAIT_MS);
+    return () => clearTimeout(id);
+  }, []);
+  const fontsSettled = Boolean((playfairLoaded || playfairError) && (latoLoaded || latoError));
+  if (Platform.OS !== 'web' && !fontsSettled && !fontWaitOver) return null;
 
   return (
     // Required by react-native-screens' native-stack (what expo-router's

@@ -259,13 +259,20 @@ export default function LoginScreen() {
                 <TrustBadges />
 
                 {__DEV__ ? (
-                  <Pressable
-                    style={styles.demoLink}
-                    onPress={() => {
-                      void signInDemo().then(() => router.replace('/performance'));
-                    }}>
-                    <Text style={styles.demoLinkText}>View demo (populated dummy account, dev only)</Text>
-                  </Pressable>
+                  <>
+                    <Pressable
+                      style={styles.demoLink}
+                      onPress={() => {
+                        void signInDemo().then(() => router.replace('/performance'));
+                      }}>
+                      <Text style={styles.demoLinkText}>View demo (populated dummy account, dev only)</Text>
+                    </Pressable>
+                    {/* The slides only show once per device, so testing them
+                        again in Expo Go otherwise means clearing its storage. */}
+                    <Pressable style={styles.demoLink} onPress={() => router.push('/welcome')}>
+                      <Text style={styles.demoLinkText}>View welcome slides (dev only)</Text>
+                    </Pressable>
+                  </>
                 ) : null}
               </Animated.View>
             ) : null}
