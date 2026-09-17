@@ -23,15 +23,45 @@ export function Donut({
   const strokeWidth = size * 0.16;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const total = slices.reduce((a, s) => a + s.percent, 0) || 1;
   const gap = 2; // px of visual gap between slices
 
-  let offset = 0;
-  const arcs = slices.map((s) => {
-    const length = Math.max((s.percent / total) * circumference - gap, 0);
-    const arc = { ...s, length, offset };
-    offset += (s.percent / total) * circumference;
-    return arc;
+  // Defensive against real (not mock) data: a non-finite `percent` (NaN,
+  // undefined slipping past the type) turns into "NaN NaN" for
+  // `strokeDasharray` below, which crashed the whole screen rather than
+  // just drawing a wrong-looking arc (reported 15 Sep, on the real
+  // Performance page's allocation donut) — `react-native-svg`'s native
+  // renderer is far less forgiving of a malformed prop string than a
+  // browser's own SVG engine is. A missing/falsy `color` (e.g. a cap-band
+  // string this app's `CapBandColor` map doesn't have an entry for) is
+  // guarded the same way, with a neutral fallback rather than `undefined`.
+  const clean = slices.filter((s) => Number.isFinite(s.percent) && s.percent > 0);
+  const total = clean.reduce((a, s) => a + s.percent, 0) || 1;
+
+  // A real, nonzero allocation — even a small one — genuinely disappeared:
+  // a 0.3% slice's own proportional arc length (~1px on a typical donut
+  // this size) is SMALLER than the fixed 2px `gap` subtracted from every
+  // slice, so `Math.max(length - gap, 0)` floored it straight to a literal
+  // 0-length arc (reported 16 Sep, on a real account's QGF allocation) —
+  // mathematically consistent with the true proportion, but indistinguishable
+  // from that strategy not being held at all. `MIN_ARC` floors any nonzero
+  // slice to a small but real, visible sliver instead — the same pattern
+  // most charting libraries use for exactly this reason. The few pixels of
+  // visual overlap this can cost a neighboring slice is imperceptible at
+  // this scale and a better trade than an allocation reading as absent.
+  const MIN_ARC = 3;
+  // Cumulative offsets built as a plain array up front, not a `let`
+  // mutated across `.map()` iterations — the React Compiler this project
+  // runs under (see app.json's `reactCompiler` experiment) flags
+  // reassigning a variable closed over inside a component's render body,
+  // whether or not it's actually unsafe in this specific case. `clean` is
+  // always a handful of slices, so the O(n²) of a slice+reduce cumulative
+  // sum here costs nothing real.
+  const rawLengths = clean.map((s) => (s.percent / total) * circumference);
+  const arcs = clean.map((s, i) => {
+    const length = Math.max(rawLengths[i]! - gap, MIN_ARC);
+    const color = s.color || QodeColor.textMuted;
+    const offset = rawLengths.slice(0, i).reduce((a, b) => a + b, 0);
+    return { ...s, color, length, offset };
   });
 
   return (

@@ -9,6 +9,7 @@ import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { useAuth } from '@/lib/auth';
 
 const ITEMS = [
+  { href: '/link' as const, label: 'Link accounts' },
   { href: '/reports' as const, label: 'Reports' },
   { href: '/risk-profile' as const, label: 'Risk Profile' },
   { href: '/profile' as const, label: 'Profile' },

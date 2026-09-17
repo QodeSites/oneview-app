@@ -67,6 +67,10 @@ export interface MetricCard {
   benchmarkValue: number | null;
   unit: 'percent' | 'ratio' | 'multiple' | 'crore';
   better: 'higher' | 'lower';
+  /** One sentence explaining the metric — web shows it behind an ⓘ next to
+   * the tile's label ("Annualised growth rate of this band over the last
+   * year." for CAGR). */
+  definition: string;
 }
 
 export interface CapSection {
@@ -83,6 +87,10 @@ export interface CapSection {
   series: Series[];
   metrics: MetricCard[];
   insight: string;
+  /** Present only on the merged "Small & Micro" section — one sentence
+   * stating how the two bands were weighted together (qode-oneview's
+   * `smallMicroBlendNote`). */
+  blendNote?: string;
 }
 
 export interface RaceBar {
@@ -139,6 +147,10 @@ export interface CapContentRow {
   value: number;
   via: 'direct' | 'funds' | 'both';
   kind?: 'stock' | 'etf' | 'invitReit' | 'mf';
+  /** Which fund(s) hold this, for a `via: 'funds'`/`'both'` row — web shows
+   * it as a hover title on the "Mutual fund" label; mobile has no hover, so
+   * it's surfaced as small text under the type instead where shown. */
+  through?: string[];
 }
 
 export interface WealthGapLeg {
@@ -184,6 +196,10 @@ export interface ReviewData {
   assetCards: AssetCard[];
   capMix: CapSlice[];
   capContents: Partial<Record<CapBand, CapContentRow[]>>;
+  /** The Others tab's own breakdown by kind (cash, gold, debt, un-looked-
+   * through ETFs...) — separate from `capContents.unclassified`, which is
+   * the same money grouped by individual holding instead. */
+  othersBreakdown: { label: string; value: number; count: number | null }[];
   capCoverage: Coverage;
   alerts: Alert[];
   holdings: Holding[];
@@ -297,6 +313,13 @@ export const mockReviewData: ReviewData = {
     ],
   },
 
+  // Sums exactly to capMix's unclassified slice (₹372,900 + ₹128,750 =
+  // ₹501,650), same invariant capContents.unclassified is held to.
+  othersBreakdown: [
+    { label: 'Cash & bank deposits', value: 372_900, count: 1 },
+    { label: 'Gold ETF', value: 128_750, count: 1 },
+  ],
+
   capCoverage: {
     valued: 6,
     total: 7,
@@ -351,8 +374,8 @@ export const mockReviewData: ReviewData = {
       benchmark: 'NIFTY 100',
       series: [],
       metrics: [
-        { key: 'cagr', label: 'CAGR', value: 15.8, strategyValue: 19.4, benchmarkValue: 12.1, unit: 'percent', better: 'higher' },
-        { key: 'maxDrawdown', label: 'Max Drawdown', value: -14.2, strategyValue: -9.6, benchmarkValue: -18.3, unit: 'percent', better: 'higher' },
+        { key: 'cagr', label: 'CAGR', value: 15.8, strategyValue: 19.4, benchmarkValue: 12.1, unit: 'percent', better: 'higher', definition: 'Annualised growth rate of this band over the last year.' },
+        { key: 'maxDrawdown', label: 'Max Drawdown', value: -14.2, strategyValue: -9.6, benchmarkValue: -18.3, unit: 'percent', better: 'higher', definition: 'The deepest peak-to-trough fall over the period.' },
       ],
       insight: 'Your large cap sleeve is ahead of NIFTY 100 but trails the Qode All Weather strategy over the same window.',
     },
@@ -373,14 +396,18 @@ export const mockReviewData: ReviewData = {
       benchmark: 'NIFTY Midcap 150',
       series: [],
       metrics: [
-        { key: 'cagr', label: 'CAGR', value: 22.4, strategyValue: 24.9, benchmarkValue: 18.7, unit: 'percent', better: 'higher' },
-        { key: 'maxDrawdown', label: 'Max Drawdown', value: -21.5, strategyValue: -16.2, benchmarkValue: -24.8, unit: 'percent', better: 'higher' },
+        { key: 'cagr', label: 'CAGR', value: 22.4, strategyValue: 24.9, benchmarkValue: 18.7, unit: 'percent', better: 'higher', definition: 'Annualised growth rate of this band over the last year.' },
+        { key: 'maxDrawdown', label: 'Max Drawdown', value: -21.5, strategyValue: -16.2, benchmarkValue: -24.8, unit: 'percent', better: 'higher', definition: 'The deepest peak-to-trough fall over the period.' },
       ],
       insight: 'Mid cap is your fastest-growing sleeve this year, running close to Qode Tactical Fund.',
     },
     {
       id: 'small',
-      label: 'Small Cap',
+      // "Small & Micro", not "Small Cap" — matches qode-oneview's own label
+      // for this band exactly (from-analysis.ts's BANDS array): Qode runs
+      // no dedicated micro-cap strategy any more, so the two are always
+      // shown as one merged tab, never two.
+      label: 'Small & Micro',
       value: 531_150,
       directValue: 0,
       viaFundsValue: 531_150,
@@ -391,8 +418,8 @@ export const mockReviewData: ReviewData = {
       benchmark: 'NIFTY Smallcap 250',
       series: [],
       metrics: [
-        { key: 'cagr', label: 'CAGR', value: 28.1, strategyValue: 31.6, benchmarkValue: 22.9, unit: 'percent', better: 'higher' },
-        { key: 'maxDrawdown', label: 'Max Drawdown', value: -29.8, strategyValue: -22.1, benchmarkValue: -33.4, unit: 'percent', better: 'higher' },
+        { key: 'cagr', label: 'CAGR', value: 28.1, strategyValue: 31.6, benchmarkValue: 22.9, unit: 'percent', better: 'higher', definition: 'Annualised growth rate of this band over the last year.' },
+        { key: 'maxDrawdown', label: 'Max Drawdown', value: -29.8, strategyValue: -22.1, benchmarkValue: -33.4, unit: 'percent', better: 'higher', definition: 'The deepest peak-to-trough fall over the period.' },
       ],
       insight: 'Your only small cap exposure is through Quant Small Cap Fund — no direct small cap holdings.',
     },

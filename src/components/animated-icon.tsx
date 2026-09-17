@@ -5,6 +5,8 @@ import { Dimensions, StyleSheet, View } from 'react-native';
 import Animated, { Easing, Keyframe } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 
+import { QodeColor } from '@/constants/qode-theme';
+
 const INITIAL_SCALE_FACTOR = Dimensions.get('screen').height / 90;
 const DURATION = 600;
 
@@ -50,7 +52,7 @@ export function AnimatedSplashOverlay() {
     },
   });
 
-  const image = <Image style={styles.image} source={require('@/assets/images/expo-logo.png')} />;
+  const image = <Image style={styles.splashImage} source={require('@/assets/images/splash-icon.png')} />;
 
   return animate ? (
     <Animated.View
@@ -156,9 +158,15 @@ const styles = StyleSheet.create({
     height: 128,
     position: 'absolute',
   },
+  // Size and color match app.json's expo-splash-screen config, so the
+  // native launch screen hands off to this overlay without a visible jump.
+  splashImage: {
+    width: 120,
+    height: 120,
+  },
   splashOverlay: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: '#208AEF',
+    backgroundColor: QodeColor.greenDeep,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,

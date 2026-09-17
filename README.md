@@ -25,6 +25,59 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Testing over mobile data (not the same Wi-Fi as this machine)
+
+This app talks to a separate backend, **qode-oneview**, running locally on
+`localhost:3171`. On the same Wi-Fi, `npx expo start` finds it automatically
+— nothing below applies. If your phone is on mobile data (or a different
+network) instead, you need `--tunnel` for Metro itself, **and** a second,
+separate tunnel just for qode-oneview, since Expo's own tunnel only proxies
+Metro's bundler port, not other ports on this machine.
+
+### One-time setup already done
+
+`mobile-app/.env` (gitignored, not committed) holds
+`EXPO_PUBLIC_API_BASE_URL` — the URL the app calls instead of
+auto-detecting a LAN IP. `src/lib/api.ts`'s `getApiBaseUrl()` reads this
+first, before anything else.
+
+### Every time you restart the qode-oneview tunnel (the URL is ephemeral)
+
+The tunnel below is a Cloudflare "quick tunnel" — free, no account, but a
+**brand new random URL every time the process restarts**, including if
+your machine sleeps/reboots or you close the terminal it's running in.
+When that happens the app can't reach qode-oneview and shows "Could not
+reach the server" even though qode-oneview itself is fine.
+
+**1. Make sure qode-oneview is actually running:**
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3171/
+```
+Expect `200`. If not, start it first (`npm run dev` in `qode-oneview/`).
+
+**2. Start a fresh tunnel to it**, in its own terminal (leave it running):
+```bash
+npx cloudflared tunnel --url http://localhost:3171
+```
+Wait for a box in the output containing a URL like:
+```
+https://<random-words>.trycloudflare.com
+```
+
+**3. Put that URL in `mobile-app/.env`:**
+```
+EXPO_PUBLIC_API_BASE_URL=https://<random-words>.trycloudflare.com
+```
+(Overwrite the old value — it's dead now.)
+
+**4. Restart Metro** (`npx expo start --tunnel`) — env vars are read once at
+bundler startup, so a hot reload won't pick up the new value; a full
+restart of the Expo process is required. Then reload the app on your phone.
+
+Skip all of this — and delete `.env` entirely — once you're back on the
+same Wi-Fi as this machine; `getApiBaseUrl()` finds the LAN IP on its own
+with no tunnel needed at all.
+
 ## Get a fresh project
 
 When you're ready, run:

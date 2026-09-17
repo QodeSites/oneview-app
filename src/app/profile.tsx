@@ -1,79 +1,129 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PageHeader } from '@/components/PageHeader';
+import { ErrorView, LoadingView } from '@/components/RemoteStateView';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
+import { useRemoteData } from '@/hooks/use-remote-data';
 import { dayLabel } from '@/lib/format';
-import { mockReviewData } from '@/lib/mock-data';
+import { getProfileData } from '@/lib/reviewApi';
 
 /**
- * Profile — MVP preview. See qode-oneview's Profile.tsx for the real
- * screen: "what do you know about me", account details, and every
- * connected source named plainly ("HDFC Bank, 1 account, read on 17 Aug"
- * rather than an abstract "we hold your data").
+ * Profile — real data from qode-oneview's `getProfile(custId)` via
+ * `GET /api/mobile/profile` (see MOBILE_BACKEND_CHANGES.md). `null` means
+ * nothing on file yet (e.g. analysis hasn't run), not an error.
  */
 export default function ProfileScreen() {
-  const p = mockReviewData.profile;
+  const { state, refreshing, refresh } = useRemoteData(getProfileData);
+
+  if (state.status === 'loading') {
+    return (
+      <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <LoadingView />
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
+
+  if (state.status === 'error') {
+    return (
+      <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <ErrorView message={state.message} onRetry={refresh} />
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
+
+  const p = state.data;
 
   return (
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <Text style={styles.dummyBadge}>Preview data</Text>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.cream} />}
+        >
           <PageHeader
             title="Your profile"
             subtitle="What we hold about you, and how to have it deleted."
-            navAsOf={mockReviewData.client.navAsOf}
+            navAsOf={p?.analysisAt ?? null}
           />
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Your details</Text>
-            <Row label="Name" value={p.name} />
-            <Row label="Mobile" value={p.phone} />
-            <Row label="PAN" value={p.panMasked} />
-            <Row label="Email" value={p.email} />
-            <Row label="Member since" value={dayLabel(p.memberSince)} />
-            <Row label="Account reference" value={p.custId} small />
-            <Text style={styles.note}>
-              To correct any of this, write to investor.relations@qodeinvest.com. Your mobile number cannot be
-              changed here — it is what your accounts are linked against.
-            </Text>
-          </View>
-
-          <View style={styles.metricsRow}>
-            <View style={styles.metric}>
-              <Text style={styles.metricLabel}>Holdings on file</Text>
-              <Text style={styles.metricValue}>{p.holdingsCount}</Text>
-              <Text style={styles.metricSub}>
-                stocks, funds and ETFs · plus {p.bankAccountCount} bank account{p.bankAccountCount === 1 ? '' : 's'}
+          {p === null ? (
+            <View style={styles.card}>
+              <Text style={styles.note}>
+                Nothing on file yet. Link an account to start building your profile.
               </Text>
             </View>
-            <View style={styles.metric}>
-              <Text style={styles.metricLabel}>Review last computed</Text>
-              <Text style={styles.metricValue}>{dayLabel(p.analysisAt)}</Text>
-              <Text style={styles.metricSub}>
-                {p.riskProfileAt ? `Risk profile completed ${dayLabel(p.riskProfileAt)}` : 'Risk profile not completed'}
-              </Text>
-            </View>
-          </View>
+          ) : (
+            <>
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>Your details</Text>
+                <Row label="Name" value={p.name ?? '—'} />
+                <Row label="Mobile" value={p.phone} />
+                <Row label="PAN" value={p.panMasked ?? '—'} />
+                <Row label="Email" value={p.email ?? '—'} />
+                <Row label="Member since" value={dayLabel(p.memberSince)} />
+                <Text style={styles.note}>
+                  To correct any of this, write to investor.relations@qodeinvest.com. Your mobile number cannot be
+                  changed here — it is what your accounts are linked against.
+                </Text>
+              </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>What we have read, and from where</Text>
-            {p.sources.map((s) => (
-              <Row
-                key={s.label}
-                label={s.label}
-                sub={`${s.kind} · ${s.count} ${s.count === 1 ? 'record' : 'records'}`}
-                value={dayLabel(s.lastSeen)}
-              />
-            ))}
-            <Text style={styles.note}>
-              Read-only, through the RBI&apos;s Account Aggregator framework. We can see balances and holdings; we
-              can never move money, and we never see your bank login. You can withdraw consent with your Account
-              Aggregator at any time.
-            </Text>
-          </View>
+              <View style={styles.metricsRow}>
+                <View style={styles.metric}>
+                  <Text style={styles.metricLabel}>Holdings on file</Text>
+                  <Text style={styles.metricValue}>{p.holdingsCount}</Text>
+                  <Text style={styles.metricSub}>
+                    stocks, funds and ETFs · plus {p.bankAccountCount} bank account{p.bankAccountCount === 1 ? '' : 's'}
+                  </Text>
+                </View>
+                <View style={styles.metric}>
+                  <Text style={styles.metricLabel}>Review last computed</Text>
+                  <Text style={styles.metricValue}>{dayLabel(p.analysisAt)}</Text>
+                  <Text style={styles.metricSub}>
+                    {p.riskProfileAt ? `Risk profile completed ${dayLabel(p.riskProfileAt)}` : 'Risk profile not completed'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.card}>
+                <Text style={styles.cardTitle}>What we have read, and from where</Text>
+                {p.sources.length === 0 ? (
+                  <Text style={styles.note}>No sources linked yet.</Text>
+                ) : (
+                  p.sources.map((s) => (
+                    // `s.label` alone isn't unique — confirmed against the
+                    // real query (qode-oneview's profile.ts): it groups
+                    // `fip_name` separately WITHIN each holding kind across
+                    // 5 unioned queries, so the same provider legitimately
+                    // produces two rows with the same label when it
+                    // supplies more than one kind of holding (hit exactly
+                    // this on a real account, 16 Sep: "Central Depository
+                    // Services Limited" reporting both stocks and mutual
+                    // funds). Not a bug to work around — web's own
+                    // Profile.tsx already keys on this same composite
+                    // (`${s.kind}-${s.label}`), matched here.
+                    <Row
+                      key={`${s.kind}-${s.label}`}
+                      label={s.label}
+                      sub={`${s.kind} · ${s.count} ${s.count === 1 ? 'record' : 'records'}`}
+                      value={dayLabel(s.lastSeen)}
+                    />
+                  ))
+                )}
+                <Text style={styles.note}>
+                  Read-only, through the RBI&apos;s Account Aggregator framework. We can see balances and holdings;
+                  we can never move money, and we never see your bank login. You can withdraw consent with your
+                  Account Aggregator at any time.
+                </Text>
+              </View>
+            </>
+          )}
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
@@ -140,6 +190,20 @@ const styles = StyleSheet.create({
     padding: QodeSpace[4],
   },
   metricLabel: { fontFamily: QodeFont.uiRegular, fontSize: 10.5, color: QodeColor.textMuted, textTransform: 'uppercase' },
-  metricValue: { fontFamily: QodeFont.display, fontSize: 18, color: QodeColor.cream, marginTop: 4 },
+  // Lato, not Playfair — confirmed against web's own Profile.tsx, where
+  // both this figure (holdingsCount) and the sibling "Review last computed"
+  // date share one class, `rv-metric__value`, with no bold/gold modifier.
+  // review.css's own comment on that rule: "Numbers are Lato throughout.
+  // Playfair is a display face... which makes it good for a heading and bad
+  // for a column of figures, where the only job is to be compared against
+  // the figure above it." Cream stays — that class carries no color of its
+  // own either.
+  metricValue: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 18,
+    color: QodeColor.cream,
+    marginTop: 4,
+    fontVariant: ['tabular-nums'],
+  },
   metricSub: { fontFamily: QodeFont.uiRegular, fontSize: 10.5, color: QodeColor.textMuted, marginTop: 4 },
 });

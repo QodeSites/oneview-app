@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -23,6 +23,24 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  * session cookie `/api/auth/verify` already set on the previous screen, so
  * this only works as the very next step after a real OTP verify, same as
  * on web.
+ *
+ * Two real gaps found in an audit (16 Sep), neither ever reported directly
+ * but both real dead ends:
+ * 1. This screen had NO back/close control at all — every sibling screen
+ *    in the sign-up/login/linking flow has one (`link.tsx`'s header
+ *    "Close", `OtpEntryForm.tsx`'s "Change number"). The only way out was
+ *    an undocumented OS back-gesture/hardware-back, which happens to work
+ *    by default but nothing on screen said so. Worse, that verify-session
+ *    cookie this screen depends on is short-lived — if it expires while
+ *    someone's mid-form (reading, backgrounding the app, slow typing),
+ *    `submit()` shows a server error with no visible way back to start a
+ *    fresh OTP verify. Added a real "Start over" header link.
+ * 2. `phone` is a route param this screen has no control over — a
+ *    malformed deep link or a future caller that forgets to pass it would
+ *    let `submit()` succeed with `signIn(phone ?? '')`, persisting a
+ *    session keyed to an empty phone number. Guarded: redirect to
+ *    `/login` immediately if `phone` is missing, rather than letting
+ *    registration proceed on a broken identity.
  */
 export default function RegisterScreen() {
   const router = useRouter();
@@ -32,6 +50,10 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!phone) router.replace('/login');
+  }, [phone, router]);
 
   const nameValid = name.trim().length >= 2;
   const emailValid = EMAIL_RE.test(email.trim());
@@ -59,6 +81,11 @@ export default function RegisterScreen() {
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           <SafeAreaView edges={['top', 'bottom']}>
+            <View style={styles.headerRow}>
+              <Pressable accessibilityRole="button" hitSlop={12} onPress={() => router.replace('/login')}>
+                <Text style={styles.startOver}>Start over</Text>
+              </Pressable>
+            </View>
             <View style={styles.hero}>
               <BrandMark size={26} showWordmark={false} />
               <StepDots count={2} activeIndex={1} />
@@ -121,6 +148,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: QodeSpace[5],
     paddingTop: QodeSpace[7],
     paddingBottom: QodeSpace[6],
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginBottom: QodeSpace[2],
+  },
+  startOver: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 14,
+    color: QodeColor.accent,
   },
   hero: {
     alignItems: 'center',

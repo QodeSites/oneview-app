@@ -148,7 +148,28 @@ export function OtpEntryForm({ phone, onSubmit, onChangeNumber, onResend }: OtpE
           );
         })}
         {/* The real input: invisible, sized over the boxes, still carrying
-            the exact placeholder/value contract the tests query. */}
+            the exact placeholder/value contract the tests query.
+            `textContentType="oneTimeCode"` is what turns on iOS's own
+            QuickType-bar code suggestion — zero-config, reads the incoming
+            SMS as-is. `autoComplete="sms-otp"` is the Android equivalent —
+            note NOT `"one-time-code"` (fixed 15 Sep): despite RN's own
+            TypeScript types listing `"one-time-code"` as a "cross-platform"
+            value, this RN version's actual Android bridge
+            (ReactTextInputManager.kt's `REACT_PROPS_AUTOFILL_HINTS_MAP`)
+            has no entry for it at all — an unrecognized value falls into
+            that map's `else` branch, which explicitly sets
+            `IMPORTANT_FOR_AUTOFILL_NO`, actively telling Android's Autofill
+            Framework to ignore the field. That silently disabled Android
+            autofill entirely regardless of device/keyboard settings, which
+            is exactly why nothing ever appeared above the keyboard on
+            Android testing. `"sms-otp"` is the one value that actually maps
+            to `AUTOFILL_HINT_SMS_OTP` in that same file. Neither prop needs
+            a native module or a qode-oneview change — this works standalone
+            in Expo Go. Reliability is OS/keyboard-dependent; a more robust
+            SMS User Consent-based upgrade was tried and rolled back (see
+            MOBILE_BACKEND_CHANGES.md) since it needs a native module that
+            can't run in Expo Go, and the priority right now is developing
+            and testing inside Expo Go. */}
         <TextInput
           style={styles.hiddenInput}
           placeholder="······"
@@ -156,6 +177,8 @@ export function OtpEntryForm({ phone, onSubmit, onChangeNumber, onResend }: OtpE
           selectionColor="transparent"
           caretHidden
           keyboardType="number-pad"
+          autoComplete="sms-otp"
+          textContentType="oneTimeCode"
           value={otp}
           onChangeText={handleChange}
           onFocus={() => setFocused(true)}

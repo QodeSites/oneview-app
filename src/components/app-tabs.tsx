@@ -1,24 +1,34 @@
+import { LinearGradient } from 'expo-linear-gradient';
 import { GlassView } from 'expo-glass-effect';
 import * as Haptics from 'expo-haptics';
+import { usePathname } from 'expo-router';
 import { Tabs, TabList, TabTrigger, TabSlot, TabTriggerSlotProps } from 'expo-router/ui';
-import { useEffect } from 'react';
-import { Platform, Pressable, StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import { useEffect, useRef, useState } from 'react';
+import { LayoutChangeEvent, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HoldingsIcon, MfXrayIcon, MoreIcon, PerformanceIcon, SegmentsIcon } from './TabIcons';
+import { BuildingReview } from './BuildingReview';
+import { LoadingView } from './RemoteStateView';
+import { NothingYet } from './NothingYet';
 
-import { QodeColor } from '@/constants/qode-theme';
+import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
+import { useRemoteData } from '@/hooks/use-remote-data';
+import { isDemoActive } from '@/lib/demo';
+import { getReview } from '@/lib/reviewApi';
 
 /**
  * "Floating Pill" — picked from the four options reviewed as an artifact
  * (tab-bar-options.html) over the earlier full-width bar. Icons only, no
  * labels; the bar itself lifts off the screen edges into a rounded
- * capsule; the active tab gets a filled cream circle behind its icon
- * rather than a shared indicator sliding between cells. That last part
- * simplifies this file too — each cell now animates only itself, so there
- * is no cross-cell shared value to coordinate (contrast the old
- * `activeIndex` SharedValue threaded through every TabCell).
+ * capsule; the active tab is marked by a single cream circle that GLIDES
+ * between cells — a plain `withTiming` translateX, no spring/bounce —
+ * rather than each cell independently popping its own circle in and out
+ * (that per-cell spring read as "bubbling"; asked to replace it, 15 Sep).
+ * `activeIndex` comes from `usePathname()` matched against `TABS`, since
+ * `expo-router/ui`'s `TabTrigger` only tells an individual cell whether
+ * IT is focused, not the bar as a whole which index that is.
  *
  * `TAB_BAR_PILL_HEIGHT`/`FLOATING_MARGIN` are duplicated (as documented
  * constants, not an import) in `hooks/use-tab-bar-height.ts`, which every
@@ -43,18 +53,47 @@ const TABS = [
 const FLOATING_MARGIN = 16;
 
 export default function AppTabs() {
+  const pathname = usePathname();
+  const activeIndex = Math.max(
+    0,
+    TABS.findIndex((t) => t.href === pathname),
+  );
+
+  // Each cell's real, measured `{x, y, width, height}` relative to `row` —
+  // NOT assumed from `rowWidth / TABS.length` (horizontal) or a `top: '50%'`
+  // + negative-margin centering trick (vertical). Both assumptions broke on
+  // real devices: `cell` is `flex: 1`, which only guarantees equal width
+  // once every cell has actually laid out and doesn't account for Yoga's
+  // own per-cell pixel rounding (reported 15 Sep, fixed for X only); the
+  // percentage trick assumes `top: '50%'` resolves against the same box
+  // `cell`'s own height is centered within, which doesn't hold up against
+  // `GlassView`'s real Liquid Glass rendering (left the circle visibly
+  // above the icon it's meant to sit behind — reported same day). Measuring
+  // the ACTUAL cell in both axes is the only way to guarantee the circle
+  // lands exactly where that cell's icon actually is, full stop.
+  const cellLayoutsRef = useRef<({ x: number; y: number; width: number; height: number } | null)[]>(
+    TABS.map(() => null),
+  );
+  const [layoutVersion, setLayoutVersion] = useState(0);
+
   return (
     <Tabs>
-      <TabSlot style={{ height: '100%' }} />
+      <TabsGate pathname={pathname} />
       <TabList asChild>
-        <BottomBar>
-          {TABS.map((tab) => (
+        <BottomBar activeIndex={activeIndex} cellLayoutsRef={cellLayoutsRef} layoutVersion={layoutVersion}>
+          {TABS.map((tab, index) => (
             <TabTrigger key={tab.name} name={tab.name} href={tab.href} asChild>
               {/* Icons only now — `label` still named on TABS (and passed
                   to TabTrigger's own `name`/accessibility wiring via
                   expo-router/ui) even though TabCell no longer renders
                   it visually; screen readers still get it. */}
-              <TabCell Icon={tab.Icon} />
+              <TabCell
+                Icon={tab.Icon}
+                onMeasure={(x, y, width, height) => {
+                  cellLayoutsRef.current[index] = { x, y, width, height };
+                  setLayoutVersion((v) => v + 1);
+                }}
+              />
             </TabTrigger>
           ))}
         </BottomBar>
@@ -63,36 +102,140 @@ export default function AppTabs() {
   );
 }
 
+/**
+ * Gates the four dashboard tabs (Performance/Segments/MF X-Ray/Holdings)
+ * behind the same three-way check qode-oneview's own `/review` layout makes
+ * before rendering any of them, off `GET /api/mobile/review`'s `presence`/
+ * `building` fields:
+ *
+ *   not empty                    → the real tabs
+ *   empty, consent still fetching → `BuildingReview` (a wait screen)
+ *   empty, otherwise              → `NothingYet` (never linked, or linked
+ *                                    and genuinely found nothing)
+ *
+ * Collapsing the middle case into `NothingYet` (as an earlier version of
+ * this gate did) showed its `hasConsent: true` branch — "your accounts
+ * reported no holdings, link another account" — to someone whose data
+ * simply hadn't arrived yet, a real claim about their (still unknown)
+ * holdings rather than an honest "still waiting" (reported 15 Sep). Without
+ * any of this gate, a never-linked customer instead saw all four tabs
+ * rendered against zeros (a donut with no slices, "₹0" in the hero, empty
+ * tables) with no explanation at all — the original failure mode qode-
+ * oneview's own `NothingYet`/`BuildingReview` exist to prevent on web (see
+ * each file's own comment).
+ *
+ * Profile/Reports/Risk Profile are separate stack screens, not gated
+ * here — matching web, where Risk Profile explicitly works "in both the
+ * linked and not-linked states" and Profile/Reports show account-level
+ * facts that don't depend on any AA data having arrived. More itself is
+ * a TAB, not a separate stack screen, and needs its own explicit
+ * exemption below for exactly that reason (see the `pathname === '/more'`
+ * check) — it's this gate's one deliberate escape hatch, since it's
+ * where "Sign out" and "Link accounts" (retry) both live.
+ *
+ * A failed presence check (network hiccup, timeout) falls through to the
+ * normal tabs rather than blocking on it — each screen already has its own
+ * loading/error handling, and a transient check failure here shouldn't be
+ * able to hide the whole app behind a spinner.
+ */
+function TabsGate({ pathname }: { pathname: string }) {
+  const { state, refreshing, refresh } = useRemoteData(getReview);
+  const insets = useSafeAreaInsets();
+  // The doc comment above claims More/Profile/Reports/Risk Profile "aren't
+  // gated here" — true for the latter three (separate stack screens this
+  // gate never runs for at all), but False for More itself: it's one of
+  // the five TABS, rendered through this exact same `TabSlot`, so it was
+  // being intercepted by the checks below identically to Performance/
+  // Segments/MF X-Ray/Holdings. That's a real dead end, not just an
+  // inconsistency: More is where "Sign out" and "Link accounts" (retry)
+  // both live, and a customer who backed out of `/link` mid-journey (its
+  // own "Close" button, or the OS back gesture) landed straight on
+  // whichever of NothingYet/BuildingReview matched their state with
+  // NO WAY OUT of it at all — reported 16 Sep, "I am stuck." Exempting
+  // `/more` here is what actually makes the doc comment's claim true.
+  if (pathname === '/more') {
+    return <TabSlot style={{ height: '100%' }} />;
+  }
+
+  if (state.status === 'loading') {
+    return (
+      <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={{ flex: 1 }}>
+        <LoadingView />
+      </LinearGradient>
+    );
+  }
+
+  if (state.status === 'ready' && state.data.presence.isEmpty) {
+    // A consent that exists but hasn't delivered yet is mid-fetch, not
+    // "never linked" — showing NothingYet's `hasConsent: true` branch there
+    // ("your accounts reported no holdings, link another account") was the
+    // wrong claim for someone whose data simply hasn't arrived (reported
+    // 15 Sep). Check this BEFORE NothingYet, matching the order qode-
+    // oneview's own layout checks them in.
+    //
+    // Both branches below are wrapped in a real `ScrollView`+`RefreshControl`
+    // now — `BuildingReview.tsx`'s own copy ("Pull down to check again")
+    // and its own doc comment both always assumed this gate would supply
+    // that, but it never actually did; the content just sat in a plain
+    // `View` with nothing to pull (reported 16 Sep, alongside the `/more`
+    // dead-end above — the two were found together).
+    if (state.data.building) {
+      return (
+        <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={{ flex: 1 }}>
+          <ScrollView
+            contentContainerStyle={styles.gateScroll}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
+            <BuildingReview building={state.data.building} />
+          </ScrollView>
+        </LinearGradient>
+      );
+    }
+    return (
+      <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={styles.gateScroll}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
+          <NothingYet presence={state.data.presence} />
+        </ScrollView>
+      </LinearGradient>
+    );
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <TabSlot style={{ height: '100%' }} />
+      {isDemoActive() ? (
+        <View style={[styles.demoBadge, { top: insets.top + 8 }]} pointerEvents="none">
+          <Text style={styles.demoBadgeText}>Demo data</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function TabCell({
   Icon,
   isFocused,
   onPress,
+  onMeasure,
   ...props
 }: TabTriggerSlotProps & {
   Icon: (p: { color: string; size?: number; filled?: boolean }) => React.JSX.Element;
+  onMeasure: (x: number, y: number, width: number, height: number) => void;
 }) {
-  // Local to this cell — the old version needed a single SharedValue
-  // shared across every cell to slide one indicator between them; a
-  // circle that only ever appears behind ITS OWN icon has nothing to
-  // coordinate with its siblings.
-  const scale = useSharedValue(isFocused ? 1 : 0);
-  useEffect(() => {
-    scale.value = withSpring(isFocused ? 1 : 0, { damping: 14, stiffness: 220 });
-  }, [isFocused, scale]);
-
-  const circleStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-    opacity: scale.value,
-  }));
-
-  // Dark icon ON the cream circle when active, matching the "selection is
-  // cream, not gold" rule (gold stays reserved for the primary CTA, the
-  // user's own chart line, progress, and focus — not tab selection).
+  // No animation of its own anymore — the cream circle marking the active
+  // tab is a single shared indicator owned by `BottomBar` now, which glides
+  // between cells instead of each one popping its own in and out. This
+  // cell only has to pick its icon color and report its own real position.
   const color = isFocused ? QodeColor.greenDeep : QodeColor.textMuted;
 
   return (
     <Pressable
       {...props}
+      onLayout={(e: LayoutChangeEvent) => {
+        const { x, y, width, height } = e.nativeEvent.layout;
+        onMeasure(x, y, width, height);
+      }}
       onPress={(e) => {
         // Skip the tick for a re-tap of the already-active tab — nothing
         // changed, so nothing should buzz.
@@ -101,26 +244,116 @@ function TabCell({
       }}
       android_ripple={{ color: QodeColor.surfaceRaised, borderless: true, radius: 26 }}
       style={styles.cell}>
-      <Animated.View style={[styles.activeCircle, circleStyle]} />
       <Icon color={color} size={19} filled={isFocused} />
     </Pressable>
   );
 }
 
-function BottomBar({ children }: { children?: React.ReactNode }) {
+const INDICATOR_SIZE = 40;
+const GLIDE_DURATION = 260;
+
+function BottomBar({
+  children,
+  activeIndex,
+  cellLayoutsRef,
+  layoutVersion,
+}: {
+  children?: React.ReactNode;
+  activeIndex: number;
+  cellLayoutsRef: React.RefObject<({ x: number; y: number; width: number; height: number } | null)[]>;
+  layoutVersion: number;
+}) {
   const insets = useSafeAreaInsets();
+  const indicatorX = useSharedValue(0);
+  const indicatorY = useSharedValue(0);
+  const hasMeasured = useRef(false);
+
+  // The only place `indicatorX`/`indicatorY` are ever written — first
+  // measurement snaps straight to the right spot (no glide-in from 0);
+  // every change after that glides horizontally (a plain ease-out
+  // `withTiming`, not a spring — a spring's settle-and-wobble is the
+  // "bubbling" this replaces). Vertical never animates: every cell is the
+  // same height, so the circle's Y is set once and never needs to move
+  // again — animating it would just be movement with nothing to explain it.
+  // Re-runs on `layoutVersion` too, not just `activeIndex` — the active
+  // cell's own measurement can arrive after this effect already ran once
+  // (layout is async), and a stale target would leave the circle wherever
+  // it first guessed instead of where the active cell actually is.
+  useEffect(() => {
+    const layout = cellLayoutsRef.current[activeIndex];
+    if (!layout) return;
+    const targetX = layout.x + (layout.width - INDICATOR_SIZE) / 2;
+    const targetY = layout.y + (layout.height - INDICATOR_SIZE) / 2;
+    indicatorY.value = targetY;
+    if (!hasMeasured.current) {
+      indicatorX.value = targetX;
+      hasMeasured.current = true;
+    } else {
+      indicatorX.value = withTiming(targetX, { duration: GLIDE_DURATION, easing: Easing.out(Easing.cubic) });
+    }
+  }, [activeIndex, layoutVersion, cellLayoutsRef, indicatorX, indicatorY]);
+
+  // Built entirely inside the worklet, deliberately not `style={[styles
+  // .activeCircle, indicatorStyle]}` (reanimated's own docs show that array
+  // form as the normal pattern). Reported twice (16 Sep) as reanimated's
+  // "shared value's .value inside inline style" warning firing on every
+  // tab switch, even though re-checking every `useSharedValue`/
+  // `useAnimatedStyle` in this app's own source turned up no other place
+  // that reads one — this is the only real usage, and the read genuinely
+  // only ever happens inside this worklet. Folding the static circle
+  // styling into the object this worklet returns removes the "static
+  // StyleSheet id + animated style" array shape that several open
+  // react-native-reanimated issues report as a false-positive trigger for
+  // this exact warning on 3.x/4.x. Not confirmed against a device — if the
+  // warning persists after this, it isn't coming from this component.
+  const indicatorStyle = useAnimatedStyle(() => ({
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    width: INDICATOR_SIZE,
+    height: INDICATOR_SIZE,
+    borderRadius: INDICATOR_SIZE / 2,
+    backgroundColor: QodeColor.cream,
+    transform: [{ translateX: indicatorX.value }, { translateY: indicatorY.value }],
+  }));
 
   return (
     <GlassView
       glassEffectStyle="regular"
       tintColor={QodeColor.greenDeep}
       style={[styles.bar, Platform.OS !== 'ios' && styles.barFallback, { bottom: insets.bottom + FLOATING_MARGIN }]}>
-      <View style={styles.row}>{children}</View>
+      <View style={styles.row}>
+        <Animated.View pointerEvents="none" style={indicatorStyle} />
+        {children}
+      </View>
     </GlassView>
   );
 }
 
 const styles = StyleSheet.create({
+  // `flexGrow`, not `flex` — a `ScrollView`'s `contentContainerStyle` needs
+  // the content to be ABLE to grow to fill the viewport (so NothingYet's/
+  // BuildingReview's own `justifyContent: 'center'` still centers them
+  // vertically when short) while still allowing an actual pull gesture to
+  // register, which a fixed `flex: 1` on the content container can starve.
+  gateScroll: {
+    flexGrow: 1,
+  },
+  demoBadge: {
+    position: 'absolute',
+    top: 8,
+    alignSelf: 'center',
+    backgroundColor: QodeColor.warning,
+    borderRadius: QodeRadius.pill,
+    paddingHorizontal: QodeSpace[3],
+    paddingVertical: 4,
+  },
+  demoBadgeText: {
+    fontFamily: QodeFont.ui,
+    fontSize: 11,
+    color: QodeColor.greenDeep,
+    letterSpacing: 0.4,
+  },
   bar: {
     position: 'absolute',
     left: FLOATING_MARGIN,
@@ -157,12 +390,5 @@ const styles = StyleSheet.create({
     height: 52,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  activeCircle: {
-    position: 'absolute',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: QodeColor.cream,
   },
 });

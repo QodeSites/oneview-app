@@ -11,6 +11,15 @@ export interface PhoneEntryFormProps {
   onSubmit: (phone: string) => void;
   /** True while the parent is "sending" the code — disables the field and button, swaps the label. */
   busy?: boolean;
+  /** Set while the OTP-send rate limit is active (e.g. "Try again in 4:32") —
+   * disables the button and replaces its label, same as `busy` but for a
+   * cooldown instead of an in-flight request. The rate limit is actually
+   * per-phone-number server-side, but this disables the button regardless
+   * of what's currently typed — switching to a different number during an
+   * active cooldown still has to wait it out, a deliberate simplification
+   * rather than plumbing "does the typed number match the limited one"
+   * through here for a case that's rare in practice. */
+  cooldownLabel?: string | null;
 }
 
 /**
@@ -42,7 +51,7 @@ function normaliseLocalNumber(raw: string, country: Country): string | null {
  * the one action on this screen, per the Curtain's own rule for where
  * gold is allowed.
  */
-export function PhoneEntryForm({ onSubmit, busy = false }: PhoneEntryFormProps) {
+export function PhoneEntryForm({ onSubmit, busy = false, cooldownLabel = null }: PhoneEntryFormProps) {
   const [country, setCountry] = useState<Country>(DEFAULT_COUNTRY);
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
@@ -50,7 +59,7 @@ export function PhoneEntryForm({ onSubmit, busy = false }: PhoneEntryFormProps) 
   const localDigits = normaliseLocalNumber(value, country);
   const isValid = localDigits !== null;
   const showError = value.length > 0 && !isValid;
-  const disabled = !isValid || busy;
+  const disabled = !isValid || busy || !!cooldownLabel;
   const lengthHint = minLength === maxLength ? `${minLength}-digit` : `${minLength}-${maxLength} digit`;
 
   /**
@@ -109,7 +118,7 @@ export function PhoneEntryForm({ onSubmit, busy = false }: PhoneEntryFormProps) 
         }}>
         <Animated.View
           style={[styles.button, disabled && styles.buttonDisabled, { transform: [{ scale: buttonScale }] }]}>
-          <Text style={styles.buttonText}>{busy ? 'Sending…' : 'Send code'}</Text>
+          <Text style={styles.buttonText}>{cooldownLabel ?? (busy ? 'Sending…' : 'Send code')}</Text>
         </Animated.View>
       </Pressable>
     </View>
@@ -126,6 +135,15 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
+    // Without this, React Native Web renders `flex: 1` with the browser's
+    // own implicit `min-width: auto` on flex items — a TextInput then
+    // refuses to shrink below its unconstrained/placeholder content width,
+    // so on a narrow screen the row (this + the country picker) overflows
+    // the screen's own padding instead of this field giving up space
+    // first, pushing its rounded edge past the visible screen (reported at
+    // 375px width, 15 Sep). Native iOS/Android don't share this quirk —
+    // Yoga has no such default — so it only ever showed on web.
+    minWidth: 0,
     backgroundColor: QodeColor.surface,
     borderWidth: 1,
     borderColor: QodeColor.controlBorder,

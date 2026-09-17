@@ -21,6 +21,13 @@ import { dayLabel } from '@/lib/format';
  * wraps its ScrollView in a pull-to-refresh RefreshControl instead — one
  * affordance for refreshing, not a small text link plus a gesture that did
  * the same thing.
+ *
+ * The "data looks incomplete" banner used to point at `/holdings` — a
+ * placeholder that just landed on the plain Holdings tab and did nothing
+ * (reported 16 Sep: "this goes to nothing"). It now opens the real
+ * self-serve recovery screen (`src/app/upload-statement.tsx`), ported from
+ * web's own `CasUpload.tsx` — see that screen's doc comment for the full
+ * feature.
  */
 export function PageHeader({
   title,
@@ -45,7 +52,7 @@ export function PageHeader({
         </View>
       </View>
 
-      <Link href="/holdings" asChild>
+      <Link href="/upload-statement" asChild>
         <Pressable style={styles.dataBar}>
           <Text style={styles.dataBarText}>
             Data looks incomplete? Upload your CAMS/KFin or NSDL/CDSL statement →

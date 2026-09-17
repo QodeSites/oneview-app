@@ -1,144 +1,205 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Donut } from '@/components/charts/Donut';
 import { PageHeader } from '@/components/PageHeader';
-import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
-import { mockReviewData } from '@/lib/mock-data';
-import { getStorageItem, setStorageItem } from '@/lib/storage';
+import { ErrorView, LoadingView } from '@/components/RemoteStateView';
+import { QodeColor, QodeFont, QodeRadius, QodeSpace, StrategyColor } from '@/constants/qode-theme';
+import { useRemoteData } from '@/hooks/use-remote-data';
+import { saveStrategyAnswers } from '@/lib/api';
+import { getRiskProfileData } from '@/lib/reviewApi';
+import { calculateScores, calculateTopTwo, type Scored } from '@/lib/strategy-scoring';
 
-const ANSWERS_KEY = 'qode.riskProfile.answers';
-
-interface Option {
-  value: string;
-  label: string;
-}
 interface Question {
-  key: string;
   question: string;
-  options: Option[];
+  options: string[];
 }
 
 /**
- * Six questions, ported from qode-oneview's original flow-spec component
- * (src/components/review/RiskProfile.tsx) — the interactive quiz + answered
- * summary pattern, not the read-only PersonalizedRecommendation.tsx the
- * current web page happens to show instead. Options are invented (the real
- * question/option text lives server-side in features/risk/repository.ts,
- * which mobile-profile's backend doesn't expose yet) but plausible.
+ * Verbatim from qode-oneview's `PersonalizedRecommendation.tsx` — order and
+ * option count matter, each strategy's weight matrix (`strategy-scoring.ts`)
+ * is indexed by [question][optionIndex]. A prospect on the website and a
+ * customer here must get the same recommendation from the same answers, so
+ * this can't be reworded independently of that file.
  */
 const QUESTIONS: Question[] = [
   {
-    key: 'horizon',
-    question: 'What is your investment horizon for this money?',
-    options: [
-      { value: 'lt1', label: '< 1 year' },
-      { value: '1-3', label: '1–3 years' },
-      { value: '3-5', label: '3–5 years' },
-      { value: '5plus', label: '5+ years' },
-    ],
+    question: 'What % of your investment portfolio do you plan to invest?',
+    options: ['<10%', '10-25%', '25-50%', '50-75%', '>75%'],
   },
   {
-    key: 'drawdown',
-    question: 'Your portfolio falls 20% in a month. What do you do?',
-    options: [
-      { value: 'sell', label: "I'd sell to stop the loss" },
-      { value: 'wait', label: "I'd wait it out" },
-      { value: 'add', label: "I'd add more at lower prices" },
-    ],
-  },
-  {
-    key: 'experience',
-    question: 'How much direct equity market experience do you have?',
-    options: [
-      { value: 'new', label: 'New to investing' },
-      { value: 'some', label: 'Some experience' },
-      { value: 'experienced', label: 'Very experienced' },
-    ],
-  },
-  {
-    key: 'income',
-    question: 'How would you describe your income stability?',
-    options: [
-      { value: 'variable', label: 'Variable or uncertain' },
-      { value: 'stable', label: 'Stable' },
-      { value: 'very-stable', label: 'Very stable, plus other income' },
-    ],
-  },
-  {
-    key: 'liquidity',
-    question: 'How soon might you need to withdraw this money?',
-    options: [
-      { value: 'soon', label: 'Might need it soon' },
-      { value: '2-3y', label: 'Not for 2–3 years' },
-      { value: '5plus', label: 'Not for 5+ years' },
-    ],
-  },
-  {
-    key: 'goal',
     question: 'What is your primary objective?',
     options: [
-      { value: 'protect', label: 'Capital protection' },
-      { value: 'income', label: 'Steady income' },
-      { value: 'growth', label: 'Long-term growth' },
-      { value: 'aggressive', label: 'Aggressive growth' },
+      'Capital protection',
+      'Stable income / low volatility',
+      'Balanced growth',
+      'High growth',
+      'Aggressive wealth creation',
     ],
+  },
+  {
+    question: 'How important is it that your portfolio avoids large drawdown periods?',
+    options: ['Critical', 'Important', 'Neutral', 'Somewhat', 'Not important'],
+  },
+  {
+    question: 'Which statement best describes your comfort with short-term swings in your portfolio value?',
+    options: ['Not at all', 'Slightly', 'Neutral', 'Comfortable', 'Very comfortable'],
+  },
+  {
+    question: 'What is your investment horizon?',
+    options: ['<1 yr', '1-3 yrs', '3-5 yrs', '5-7 yrs', '>7 yrs'],
+  },
+  {
+    question: 'How many years of direct equity-market experience do you have?',
+    options: ['None', '<3 yrs', '3-5 yrs', '5-10 yrs', '>10 yrs'],
   },
 ];
 
 /**
- * Risk Profile — matching qode-oneview's own live behavior: collapsed by
- * default to a summary + "Edit my answers" once answers exist, quiz only
- * shown when there are none yet or the reader explicitly asks to edit.
- *
- * Answers persist locally (src/lib/storage.ts) across an app restart —
- * there is no backend yet (mobile-profile's `/api/mobile/risk-profile`
- * isn't built), but a real, persisted-feeling completion state is still
- * closer to the truth than resetting to a blank quiz every time the app
- * opens, which is what an in-memory-only `useState` would do.
+ * Risk Profile — real data from qode-oneview's `getStrategyAnswers(custId)`
+ * via `GET /api/mobile/risk-profile`, and a mobile port of the same
+ * `PersonalizedRecommendation.tsx` quiz + allocation-scoring the web app's
+ * Risk Profile page now shows in place of the original six-question WhatsApp
+ * -style flow (removed there on request 3 Sep — see that file's own
+ * comment). Saving posts to the existing, unmodified
+ * `POST /api/review/strategy-answers` (src/lib/api.ts).
  */
 export default function RiskProfileScreen() {
-  // `null` distinguishes "still reading storage" from "read, genuinely no
-  // saved answers yet" — the same reason AuthProvider's `session` starts
-  // `undefined` rather than defaulting straight to an empty object.
-  const [answers, setAnswers] = useState<Record<string, string> | null>(null);
-  const [editing, setEditing] = useState(false);
+  const { state, refreshing, refresh, revalidate } = useRemoteData(getRiskProfileData);
 
-  useEffect(() => {
-    getStorageItem(ANSWERS_KEY)
-      .then((raw) => {
-        const saved = raw ? (JSON.parse(raw) as Record<string, string>) : {};
-        setAnswers(saved);
-        setEditing(Object.keys(saved).length < QUESTIONS.length);
-      })
-      .catch(() => {
-        setAnswers({});
-        setEditing(true);
-      });
-  }, []);
+  if (state.status === 'loading') {
+    return (
+      <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <LoadingView />
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
 
-  const liveAnswers = answers ?? {};
-  const answeredCount = QUESTIONS.filter((q) => liveAnswers[q.key]).length;
+  if (state.status === 'error') {
+    return (
+      <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <ErrorView message={state.message} onRetry={refresh} />
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
+
+  return (
+    <RiskProfileBody
+      savedAnswers={state.data}
+      refreshing={refreshing}
+      onRefresh={refresh}
+      onSaved={revalidate}
+    />
+  );
+}
+
+function isComplete(saved: number[] | null): saved is number[] {
+  return Array.isArray(saved) && saved.length === QUESTIONS.length;
+}
+
+function RiskProfileBody({
+  savedAnswers,
+  refreshing,
+  onRefresh,
+  onSaved,
+}: {
+  savedAnswers: number[] | null;
+  refreshing: boolean;
+  onRefresh: () => void;
+  onSaved: () => void;
+}) {
+  const hasSaved = isComplete(savedAnswers);
+  const [answers, setAnswers] = useState<number[]>(hasSaved ? [...savedAnswers] : Array(QUESTIONS.length).fill(0));
+  const [scores, setScores] = useState<Scored[]>(hasSaved ? calculateScores(savedAnswers) : []);
+  const [topTwo, setTopTwo] = useState<Scored[]>(hasSaved ? calculateTopTwo(calculateScores(savedAnswers)) : []);
+  const [show, setShow] = useState(hasSaved);
+  const [editing, setEditing] = useState(!hasSaved);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // The state above is seeded from `savedAnswers` once. When the server
+  // later reports different answers (edited on web), take them in — unless
+  // this screen is mid-edit or mid-save, where they would overwrite the
+  // reader's own unsaved or just-saved choices. Before this, even
+  // pull-to-refresh fetched the new answers but never showed them.
+  const savedKey = JSON.stringify(savedAnswers);
+  const [appliedKey, setAppliedKey] = useState(savedKey);
+  if (savedKey !== appliedKey && !editing && !saving) {
+    setAppliedKey(savedKey);
+    if (isComplete(savedAnswers)) {
+      const all = calculateScores(savedAnswers);
+      setAnswers([...savedAnswers]);
+      setScores(all);
+      setTopTwo(calculateTopTwo(all));
+      setShow(true);
+    } else {
+      setAnswers(Array(QUESTIONS.length).fill(0));
+      setScores([]);
+      setTopTwo([]);
+      setShow(false);
+      setEditing(true);
+    }
+  }
+
+  function pick(questionIndex: number, value: number) {
+    const next = [...answers];
+    next[questionIndex] = value;
+    setAnswers(next);
+    if (error && next.every((a) => a > 0)) setError('');
+  }
+
+  function analyse() {
+    if (!answers.every((a) => a > 0)) {
+      setError('Answer every question first — the recommendation weighs all six.');
+      return;
+    }
+    const all = calculateScores(answers);
+    setScores(all);
+    setTopTwo(calculateTopTwo(all));
+    setShow(true);
+    setEditing(false);
+    setSaving(true);
+    // Re-check only once the save has landed, so the server echoes the new
+    // answers back rather than the old ones.
+    void saveStrategyAnswers(answers).finally(() => {
+      setSaving(false);
+      onSaved();
+    });
+  }
+
+  const answeredCount = answers.filter((a) => a > 0).length;
   const remaining = QUESTIONS.length - answeredCount;
   const allAnswered = remaining === 0;
-
-  function selectAnswer(key: string, value: string) {
-    const next = { ...liveAnswers, [key]: value };
-    setAnswers(next);
-    void setStorageItem(ANSWERS_KEY, JSON.stringify(next));
-  }
 
   return (
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          <Text style={styles.dummyBadge}>Preview data</Text>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={QodeColor.cream} />}
+        >
           <PageHeader
             title="Risk Profile"
             subtitle="Six questions, so your call starts from how you actually invest."
-            navAsOf={mockReviewData.client.navAsOf}
+            navAsOf={null}
           />
+
+          {!editing ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Your answers are saved</Text>
+              <Text style={styles.completeBody}>The recommendation below is built from them.</Text>
+              <Pressable style={styles.editButton} onPress={() => setEditing(true)}>
+                <Text style={styles.editButtonText}>Edit my answers</Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           {editing ? (
             <View style={styles.card}>
@@ -152,19 +213,20 @@ export default function RiskProfileScreen() {
               </View>
 
               {QUESTIONS.map((q, i) => (
-                <View key={q.key} style={[styles.question, i === 0 && styles.questionFirst]}>
+                <View key={q.question} style={[styles.question, i === 0 && styles.questionFirst]}>
                   <Text style={styles.questionText}>
                     {i + 1}. {q.question}
                   </Text>
                   <View style={styles.pillRow}>
-                    {q.options.map((o) => {
-                      const on = liveAnswers[q.key] === o.value;
+                    {q.options.map((label, oi) => {
+                      const value = oi + 1;
+                      const on = answers[i] === value;
                       return (
                         <Pressable
-                          key={o.value}
-                          onPress={() => selectAnswer(q.key, o.value)}
+                          key={label}
+                          onPress={() => pick(i, value)}
                           style={[styles.pill, on && styles.pillOn]}>
-                          <Text style={[styles.pillText, on && styles.pillTextOn]}>{o.label}</Text>
+                          <Text style={[styles.pillText, on && styles.pillTextOn]}>{label}</Text>
                         </Pressable>
                       );
                     })}
@@ -172,13 +234,12 @@ export default function RiskProfileScreen() {
                 </View>
               ))}
 
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
               <View style={styles.foot}>
-                <Pressable
-                  disabled={!allAnswered}
-                  onPress={() => setEditing(false)}
-                  style={[styles.submit, !allAnswered && styles.submitOff]}>
+                <Pressable onPress={analyse} style={[styles.submit, !allAnswered && styles.submitOff]}>
                   <Text style={[styles.submitText, !allAnswered && styles.submitTextOff]}>
-                    Complete my risk profile
+                    {show ? 'Save & update my recommendation' : 'Analyze my answers'}
                   </Text>
                 </Pressable>
                 {!allAnswered ? (
@@ -188,34 +249,56 @@ export default function RiskProfileScreen() {
                 ) : null}
               </View>
             </View>
-          ) : (
-            <>
-              <View style={styles.completeCard}>
-                <Text style={styles.cardTitle}>Your risk profile is complete</Text>
-                <Text style={styles.completeBody}>
-                  Thank you — our team will walk you through your profile and your portfolio review on your call.
-                </Text>
-              </View>
+          ) : null}
 
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Your answers</Text>
-                {QUESTIONS.map((q) => (
-                  <View key={q.key} style={styles.answerRow}>
-                    <Text style={styles.answerQuestion}>{q.question}</Text>
-                    <Text style={styles.answerValue}>
-                      {q.options.find((o) => o.value === liveAnswers[q.key])?.label ?? '—'}
-                    </Text>
-                  </View>
-                ))}
-                <Pressable style={styles.editButton} onPress={() => setEditing(true)}>
-                  <Text style={styles.editButtonText}>Edit my answers</Text>
-                </Pressable>
-              </View>
+          {show ? (
+            <>
+              <Text style={styles.resultsHeading}>Your recommended strategy allocation</Text>
+              <Text style={styles.resultsSub}>
+                Based on your answers, tailored for different portfolio sizes. A model output, not personal
+                investment advice.
+              </Text>
+              <AllocationCard title="Under ₹5 Crores" sub="focused approach with your top strategies" rows={topTwo.map((s) => ({ code: s.code, title: s.title, description: s.description, percent: s.topAlloc ?? 0 }))} />
+              <AllocationCard title="Above ₹5 Crores" sub="diversified multi-strategy portfolio" rows={scores.map((s) => ({ code: s.code, title: s.title, description: s.description, percent: s.allocation }))} />
             </>
-          )}
+          ) : null}
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
+  );
+}
+
+function AllocationCard({
+  title,
+  sub,
+  rows,
+}: {
+  title: string;
+  sub: string;
+  rows: { code: 'QAW' | 'QTF' | 'QGF'; title: string; description: string; percent: number }[];
+}) {
+  const shown = rows.filter((r) => r.percent > 0);
+  return (
+    <View style={styles.card}>
+      <Text style={styles.cardTitle}>
+        {title} <Text style={styles.cardTitleSub}>· {sub}</Text>
+      </Text>
+      <View style={styles.donutRow}>
+        <Donut size={150} slices={shown.map((r) => ({ label: r.title, percent: r.percent, color: StrategyColor[r.code] }))} />
+      </View>
+      <View style={styles.allocList}>
+        {shown.map((r) => (
+          <View key={r.code} style={styles.allocRow}>
+            <View style={[styles.allocDot, { backgroundColor: StrategyColor[r.code] }]} />
+            <View style={styles.allocTextCol}>
+              <Text style={styles.allocTitle}>{r.title}</Text>
+              <Text style={styles.allocDescription}>{r.description}</Text>
+            </View>
+            <Text style={styles.allocPercent}>{r.percent}%</Text>
+          </View>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -228,7 +311,6 @@ const styles = StyleSheet.create({
     paddingBottom: QodeSpace[8],
     gap: QodeSpace[4],
   },
-  dummyBadge: { fontFamily: QodeFont.uiRegular, fontSize: 11, color: QodeColor.warning, textAlign: 'center' },
   card: {
     backgroundColor: QodeColor.surface,
     borderWidth: 1,
@@ -237,6 +319,8 @@ const styles = StyleSheet.create({
     padding: QodeSpace[4],
   },
   cardTitle: { fontFamily: QodeFont.display, fontSize: 17, color: QodeColor.cream },
+  cardTitleSub: { fontFamily: QodeFont.uiRegular, fontSize: 13, color: QodeColor.textMuted },
+  completeBody: { fontFamily: QodeFont.uiRegular, fontSize: 13, color: QodeColor.textSecondary, marginTop: QodeSpace[1] },
   progressRow: { flexDirection: 'row', alignItems: 'center', gap: QodeSpace[3] },
   progressTrack: {
     flex: 1,
@@ -270,6 +354,7 @@ const styles = StyleSheet.create({
   },
   pillText: { fontFamily: QodeFont.uiRegular, fontSize: 13, color: QodeColor.textPrimary },
   pillTextOn: { fontFamily: QodeFont.ui, color: QodeColor.accent },
+  errorText: { fontFamily: QodeFont.uiRegular, fontSize: 13, color: QodeColor.error, marginTop: QodeSpace[3] },
   foot: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -295,21 +380,6 @@ const styles = StyleSheet.create({
   submitText: { fontFamily: QodeFont.ui, fontSize: 14, color: QodeColor.textOnAccent },
   submitTextOff: { color: QodeColor.textMuted },
   foodNote: { fontFamily: QodeFont.uiRegular, fontSize: 12, color: QodeColor.textMuted },
-  completeCard: {
-    backgroundColor: QodeColor.accentSoft,
-    borderWidth: 1,
-    borderColor: QodeColor.accentBorder,
-    borderRadius: QodeRadius.lg,
-    padding: QodeSpace[4],
-  },
-  completeBody: { fontFamily: QodeFont.uiRegular, fontSize: 13, color: QodeColor.textSecondary, marginTop: QodeSpace[1] },
-  answerRow: {
-    paddingVertical: QodeSpace[2],
-    borderTopWidth: 1,
-    borderTopColor: QodeColor.divider,
-  },
-  answerQuestion: { fontFamily: QodeFont.uiRegular, fontSize: 12.5, color: QodeColor.textMuted },
-  answerValue: { fontFamily: QodeFont.ui, fontSize: 14, color: QodeColor.textPrimary, marginTop: 2 },
   editButton: {
     borderWidth: 1,
     borderColor: QodeColor.accent,
@@ -319,4 +389,28 @@ const styles = StyleSheet.create({
     marginTop: QodeSpace[4],
   },
   editButtonText: { fontFamily: QodeFont.ui, fontSize: 13, color: QodeColor.accent },
+  resultsHeading: { fontFamily: QodeFont.display, fontSize: 17, color: QodeColor.cream, marginTop: QodeSpace[2] },
+  resultsSub: { fontFamily: QodeFont.uiRegular, fontSize: 12.5, color: QodeColor.textMuted, marginTop: -QodeSpace[2] },
+  donutRow: {
+    alignItems: 'center',
+    marginTop: QodeSpace[2],
+  },
+  allocList: { gap: QodeSpace[3], marginTop: QodeSpace[3] },
+  allocRow: { flexDirection: 'row', alignItems: 'center', gap: QodeSpace[3] },
+  allocDot: { width: 10, height: 10, borderRadius: 3 },
+  allocTextCol: { flex: 1 },
+  allocTitle: { fontFamily: QodeFont.ui, fontSize: 13.5, color: QodeColor.textPrimary },
+  allocDescription: { fontFamily: QodeFont.uiRegular, fontSize: 11.5, color: QodeColor.textMuted, marginTop: 1 },
+  // Lato Bold, not Playfair — confirmed against web's own
+  // PersonalizedRecommendation.tsx, where this exact allocation percent
+  // renders as a plain `<strong style={{ fontSize: 18 }}>{r.percent}%</strong>`:
+  // no className, so no Playfair and no gold — just the page's inherited
+  // body font (Lato) at browser-default bold weight. Cream stays, since
+  // nothing there overrides the inherited text color either.
+  allocPercent: {
+    fontFamily: QodeFont.ui,
+    fontSize: 16,
+    color: QodeColor.cream,
+    fontVariant: ['tabular-nums'],
+  },
 });

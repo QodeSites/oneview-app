@@ -12,6 +12,37 @@ const ROLE_COLOR = {
   benchmark: QodeColor.seriesBenchmark,
 } as const;
 
+// Kept in sync with qode-oneview's review.css :root block — the only two
+// CSS custom properties from-analysis.ts's `benchmarkColor()` ever emits
+// as a literal Series.color value (checked directly against its source).
+const CSS_VAR_COLOR: Record<string, string> = {
+  '--series-client': QodeColor.seriesClient,
+  '--series-strategy': QodeColor.seriesStrategy,
+  '--series-benchmark': QodeColor.seriesBenchmark,
+  '--series-benchmark-alt': QodeColor.seriesBenchmarkAlt,
+};
+
+/**
+ * qode-oneview's real API embeds literal CSS custom-property strings for
+ * some series — e.g. `"var(--series-benchmark-alt)"` for BSE/Sensex, so a
+ * chart carrying both BSE and NIFTY draws two tellable-apart lines rather
+ * than two identical cream ones (from-analysis.ts's own comment on
+ * `benchmarkColor()`). That resolves fine in a browser's CSS engine but
+ * means nothing to `react-native-svg` — passing it straight through as a
+ * `stroke`/`backgroundColor` crashed with `"var(--series-benchmark-alt)" is
+ * not a valid color or brush` (16 Sep). Known tokens map to their real
+ * value here; anything else — a real color qode-oneview already sends
+ * (hex/rgb/rgba), or a `var()` token this map doesn't know about yet —
+ * falls back to the plain role color rather than risk another string
+ * react-native-svg can't render.
+ */
+function resolveColor(color: string | undefined, role: Series['role']): string {
+  if (!color) return ROLE_COLOR[role];
+  const match = /^var\((--[\w-]+)\)$/.exec(color.trim());
+  if (!match) return color;
+  return CSS_VAR_COLOR[match[1]!] ?? ROLE_COLOR[role];
+}
+
 const W = 1000; // viewBox units; the SVG scales to its measured container width
 const ML = 56; // left gutter for y-axis labels
 const MR = 8;
@@ -34,12 +65,36 @@ const MB = 24; // bottom gutter for x-axis month labels
  */
 export function NavChart({ series, height = 220 }: { series: Series[]; height?: number }) {
   const [at, setAt] = useState<number | null>(null);
+  // Deliberately BOTH a ref and state tracking the same measured width, not
+  // one or the other. `widthRef` is what `updateAtFromLocalX` (below) reads
+  // — it has to be a ref: `panResponder`'s handlers are created once inside
+  // `useRef(...)` and permanently close over that first render's function
+  // objects, but since those functions read `widthRef.current` rather than
+  // a captured local, they still always see the latest measured width
+  // regardless of which render's closure ends up being the one that's
+  // actually called — a `useState` value read the same way would instead
+  // be frozen at whatever it was on that first render. `measuredWidth`
+  // (state) exists for the opposite reason: the tooltip's own position
+  // (below) is computed during render, where reading a ref is exactly what
+  // the React Compiler this project runs under flags as unsafe (`react-
+  // hooks/refs`) — state is the one that's safe to read there.
   const widthRef = useRef(0);
+  const [measuredWidth, setMeasuredWidth] = useState(0);
 
   const pointCount = Math.max(...series.map((s) => s.points.length), 2);
 
   const { yMin, yMax, ticks } = useMemo(() => {
-    const all = series.flatMap((s) => s.points.map((p) => p.value));
+    // Guarded the same way Donut.tsx's slice math was (reported 15 Sep on
+    // that component; this one has the identical class of bug, just never
+    // hit yet since it only started receiving real `mix` data once
+    // performance.tsx's gate was fixed to read it at all). An empty `all`
+    // — every series in `mix` resolving to zero points, a real possibility
+    // from date-alignment across data sources — makes a bare
+    // `Math.min(...[])`/`Math.max(...[])` return `Infinity`/`-Infinity`
+    // with no error thrown, cascading into `NaN` polyline coordinates that
+    // silently render nothing rather than crashing visibly like Donut did.
+    const all = series.flatMap((s) => s.points.map((p) => p.value)).filter(Number.isFinite);
+    if (all.length === 0) return { yMin: 0, yMax: 1, ticks: [0, 1] };
     const lo = Math.min(...all);
     const hi = Math.max(...all);
     const pad = (hi - lo) * 0.08;
@@ -89,9 +144,36 @@ export function NavChart({ series, height = 220 }: { series: Series[]; height?: 
 
   function onLayout(e: LayoutChangeEvent) {
     widthRef.current = e.nativeEvent.layout.width;
+    setMeasuredWidth(e.nativeEvent.layout.width);
   }
 
-  const tipLeftPct = at === null ? 0 : (x(at) / W) * 100;
+  // A real pixel position, clamped to the container's actual measured
+  // width — not the percentage-based left/right switch this used to be.
+  // That switch (anchor via `left` below 60% of the way across, `right`
+  // above it) assumed the tooltip's own width was small enough to never
+  // matter, but the box has no `maxWidth` and sizes to its longest label
+  // ("Your Qode Mix" vs "BSE 500" vs "Your portfolio") — three lines
+  // longer than 60% would push its far edge straight past the container
+  // (reported 16 Sep: "the last one gets out of the box"). `TOOLTIP_WIDTH`
+  // below is a genuine, matching `width` on `styles.tooltip` (not just a
+  // guess used for this math), so clamping against it is exact rather
+  // than another heuristic threshold.
+  //
+  // Reads `measuredWidth` (state), not `widthRef.current` — this runs
+  // during render, and the React Compiler treats a ref read there as
+  // unsafe (`react-hooks/refs`: a ref can change without triggering the
+  // re-render this calculation depends on). `widthRef` stays reserved for
+  // `updateAtFromLocalX` above, which runs from an event handler, not
+  // render.
+  const TOOLTIP_WIDTH = 168;
+  const TOOLTIP_MARGIN = 10;
+  const tooltipLeft =
+    at === null || measuredWidth <= 0
+      ? 0
+      : Math.min(
+          Math.max((x(at) / W) * measuredWidth + TOOLTIP_MARGIN, TOOLTIP_MARGIN),
+          Math.max(measuredWidth - TOOLTIP_WIDTH - TOOLTIP_MARGIN, TOOLTIP_MARGIN),
+        );
 
   return (
     <View>
@@ -104,21 +186,72 @@ export function NavChart({ series, height = 220 }: { series: Series[]; height?: 
             `containerWidth`/`widthRef` are only needed by the touch handler
             below, which converts a real touch's local pixel X into a
             fraction of the container — nothing else depends on it. */}
-        <Svg width="100%" height={height} viewBox={`0 0 ${W} ${height}`}>
+        <Svg
+          width="100%"
+          height={height}
+          viewBox={`0 0 ${W} ${height}`}
+          // Matches web's NavChart (components/review/charts.tsx), which sets
+          // the same prop on its own <svg> — without it, react-native-svg's
+          // default "xMidYMid meet" scales x and y by the SAME factor (the
+          // smaller of the two), picked here by the huge W=1000 vs. the real
+          // container width. Since the RN <Text> axis-label overlays below
+          // are positioned by raw percentages of container width/height
+          // (assuming x and y each map 1:1 onto 0-100%), a uniform "meet"
+          // scale silently compresses+letterboxes the y-axis relative to
+          // that assumption — gridlines land at one height, their label
+          // overlays at another, reading as a crooked, non-right-angled
+          // axis. "none" stretches x and y independently to fill the given
+          // width/height exactly, which is what the percentage math assumes.
+          preserveAspectRatio="none">
           {ticks.map((t) => (
             <Line key={t} x1={ML} x2={W - MR} y1={y(t)} y2={y(t)} stroke={QodeColor.divider} strokeWidth={1} />
           ))}
           {series.map((s) => (
             <Polyline
               key={s.label}
-              points={s.points.map((p, i) => `${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ')}
+              // Same guard as `yMin`/`yMax` above — a single non-finite
+              // point turns into a literal "NaN" token inside this points
+              // string, which `react-native-svg`'s native renderer doesn't
+              // tolerate any better than it tolerated Donut's malformed
+              // strokeDasharray.
+              points={s.points
+                .map((p, i) => (Number.isFinite(p.value) ? `${x(i).toFixed(1)},${y(p.value).toFixed(1)}` : null))
+                .filter((point): point is string => point !== null)
+                .join(' ')}
               fill="none"
-              stroke={s.color ?? ROLE_COLOR[s.role]}
+              stroke={resolveColor(s.color, s.role)}
               strokeWidth={s.role === 'benchmark' ? 1.5 : 2}
+              // NOT dashed (corrected 16 Sep). The previous fix for this
+              // line's near-invisibility cited `features/report/charts.tsx`
+              // as the "intended" design — but that file draws a completely
+              // separate, PDF-export-only chart. The actual live web page's
+              // NavChart (components/review/charts.tsx, confirmed by reading
+              // it directly) has no `strokeDasharray` anywhere; every series,
+              // benchmark included, is a plain solid line distinguished only
+              // by color/opacity (`ROLE_COLOR.benchmark`'s own quiet,
+              // translucent cream). The real bug was purely the missing
+              // `vectorEffect` below — fixed on its own merits, no dash
+              // needed to make the line visible.
+              // Without this, a stroke width given in viewBox units (1.5-2 out
+              // of W=1000) gets scaled down by the same huge factor as the
+              // coordinates once the SVG maps 1000 units onto a ~350dp phone
+              // width — under 1 real device pixel, i.e. invisible. Web's
+              // review/charts.tsx applies the same fix (vectorEffect=
+              // "non-scaling-stroke" on every series path) so stroke width is
+              // read in real pixels, independent of the viewBox scale.
+              vectorEffect="non-scaling-stroke"
             />
           ))}
           {at !== null ? (
-            <Line x1={x(at)} x2={x(at)} y1={MT} y2={height - MB} stroke={QodeColor.controlBorder} strokeWidth={1} />
+            <Line
+              x1={x(at)}
+              x2={x(at)}
+              y1={MT}
+              y2={height - MB}
+              stroke={QodeColor.controlBorder}
+              strokeWidth={1}
+              vectorEffect="non-scaling-stroke"
+            />
           ) : null}
         </Svg>
 
@@ -128,7 +261,29 @@ export function NavChart({ series, height = 220 }: { series: Series[]; height?: 
           {ticks.map((t) => (
             <Text
               key={t}
-              style={[styles.axisLabel, styles.axisLabelY, { left: 0, width: ML - 6, top: `${(y(t) / height) * 100}%` }]}>
+              style={[
+                styles.axisLabel,
+                styles.axisLabelY,
+                {
+                  // Anchored by `right`, not `left` + a fixed `width`. The
+                  // previous version (fixed 16 Sep) set `width` to exactly
+                  // the plot's own left margin as a percentage of `W`, so
+                  // the label's right edge would always land where the
+                  // lines start — correct for alignment, but that box is
+                  // only ~5% of the chart's width, comfortably wide enough
+                  // for a 2-digit tick on a wide screen but too narrow for
+                  // a 3-digit one ("180") on many phones, so RN wrapped the
+                  // text onto two lines instead of overflowing it the way
+                  // a browser would have (reported 16 Sep, a different
+                  // screen than the alignment fix was checked against).
+                  // `right` pins the same edge without constraining width
+                  // at all — the Text sizes to its own content and grows
+                  // LEFTWARD as needed, so it can never wrap regardless of
+                  // how many digits the tick has, on any screen width.
+                  right: `${100 - ((ML - 6) / W) * 100}%`,
+                  top: `${(y(t) / height) * 100}%`,
+                },
+              ]}>
               {axisTick(t)}
             </Text>
           ))}
@@ -148,7 +303,7 @@ export function NavChart({ series, height = 220 }: { series: Series[]; height?: 
                       {
                         left: `${(x(at) / W) * 100}%`,
                         top: `${(y(s.points[at]!.value) / height) * 100}%`,
-                        backgroundColor: s.color ?? ROLE_COLOR[s.role],
+                        backgroundColor: resolveColor(s.color, s.role),
                       },
                     ]}
                   />
@@ -157,14 +312,7 @@ export function NavChart({ series, height = 220 }: { series: Series[]; height?: 
         </View>
 
         {at !== null && dateSource ? (
-          <View
-            style={[
-              styles.tooltip,
-              tipLeftPct > 60
-                ? { right: `${100 - tipLeftPct}%`, marginRight: 8 }
-                : { left: `${tipLeftPct}%`, marginLeft: 8 },
-            ]}
-            pointerEvents="none">
+          <View style={[styles.tooltip, { left: tooltipLeft }]} pointerEvents="none">
             <Text style={styles.tooltipDate}>{dayLabel(dateSource.points[at]?.date ?? '')}</Text>
             {series
               .filter((s) => s.points[at] !== undefined)
@@ -172,8 +320,10 @@ export function NavChart({ series, height = 220 }: { series: Series[]; height?: 
               .sort((a, b) => b.points[at]!.value - a.points[at]!.value)
               .map((s) => (
                 <View key={s.label} style={styles.tooltipRow}>
-                  <View style={[styles.tooltipDot, { backgroundColor: s.color ?? ROLE_COLOR[s.role] }]} />
-                  <Text style={styles.tooltipLabel}>{s.label}</Text>
+                  <View style={[styles.tooltipDot, { backgroundColor: resolveColor(s.color, s.role) }]} />
+                  <Text style={styles.tooltipLabel} numberOfLines={1}>
+                    {s.label}
+                  </Text>
                   <Text style={styles.tooltipValue}>{s.points[at]!.value.toFixed(2)}</Text>
                 </View>
               ))}
@@ -184,7 +334,7 @@ export function NavChart({ series, height = 220 }: { series: Series[]; height?: 
       <View style={styles.legend}>
         {series.map((s) => (
           <View key={s.label} style={styles.legendItem}>
-            <View style={[styles.legendDot, { backgroundColor: s.color ?? ROLE_COLOR[s.role] }]} />
+            <View style={[styles.legendDot, { backgroundColor: resolveColor(s.color, s.role) }]} />
             <Text style={styles.legendLabel}>{s.label}</Text>
           </View>
         ))}
@@ -217,16 +367,20 @@ const styles = StyleSheet.create({
     borderColor: QodeColor.greenDeep,
     transform: [{ translateX: -4 }, { translateY: -4 }],
   },
+  // Fixed `width`, not `minWidth` — the whole point of `tooltipLeft`'s
+  // clamp (computed above) is that it's measured against a KNOWN box
+  // width, not a guess; a content-driven width here would silently
+  // invalidate that math again the next time a label changes.
   tooltip: {
     position: 'absolute',
     top: 4,
+    width: 168,
     backgroundColor: QodeColor.greenDeep,
     borderWidth: 1,
     borderColor: QodeColor.surfaceBorder,
     borderRadius: 8,
     paddingVertical: 8,
     paddingHorizontal: 10,
-    minWidth: 140,
   },
   tooltipDate: {
     fontFamily: QodeFont.ui,

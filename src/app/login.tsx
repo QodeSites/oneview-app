@@ -1,18 +1,18 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   BackHandler,
   Dimensions,
+  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -51,15 +51,24 @@ type Step = 'phone' | 'otp' | 'no-account';
  */
 export default function LoginScreen() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { expired } = useLocalSearchParams<{ expired?: string }>();
+  const { signIn, signInDemo } = useAuth();
   const [step, setStep] = useState<Step>('phone');
   const [phone, setPhone] = useState('');
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
+  // When the real rate limit is hit, `sendUntil` is the wall-clock moment
+  // (ms) it actually lifts — from the server's own `retryAfterSeconds`,
+  // not a guess. Without this, "Too many requests" had no way to know
+  // when it stopped being true, and just sat on screen forever even once
+  // the real window had long since passed (reported 16 Sep).
+  const [sendCooldownUntil, setSendCooldownUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   async function requestCode(p: string) {
     setSending(true);
     setSendError(null);
+    setSendCooldownUntil(null);
     try {
       const result = await sendOtp(p);
       if (result.ok) {
@@ -67,11 +76,48 @@ export default function LoginScreen() {
         setStep('otp');
       } else {
         setSendError(result.error);
+        if (result.retryAfterSeconds) {
+          setNow(Date.now());
+          setSendCooldownUntil(Date.now() + result.retryAfterSeconds * 1000);
+        }
       }
     } finally {
       setSending(false);
     }
   }
+
+  // Ticks once a second only while a cooldown is actually running, and
+  // clears both the countdown and the stale error the instant it reaches
+  // zero — the fix for "the error doesn't go off after some time." Every
+  // `setState` here runs inside the timer's own callback, never
+  // synchronously in the effect body itself — the callback IS "calling
+  // setState in a callback function when external state changes," exactly
+  // the shape React's own docs ask for, as opposed to a setState call
+  // sitting directly in the effect body (which the compiler flags, and
+  // which this deliberately avoids rather than adding to this file's own
+  // one already-tolerated, pre-existing finding on a different effect).
+  useEffect(() => {
+    if (sendCooldownUntil === null) return;
+    const delay = Math.min(Math.max(sendCooldownUntil - now, 0), 1000);
+    const id = setTimeout(() => {
+      const current = Date.now();
+      if (current >= sendCooldownUntil) {
+        setSendCooldownUntil(null);
+        setSendError(null);
+      } else {
+        setNow(current);
+      }
+    }, delay);
+    return () => clearTimeout(id);
+  }, [sendCooldownUntil, now]);
+
+  const cooldownLabel = (() => {
+    if (sendCooldownUntil === null) return null;
+    const remaining = Math.max(0, Math.ceil((sendCooldownUntil - now) / 1000));
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    return `Try again in ${m}:${String(s).padStart(2, '0')}`;
+  })();
 
   /**
    * Captured once, not subscribed to resize — this is what lets the
@@ -86,15 +132,22 @@ export default function LoginScreen() {
   const [screenHeight] = useState(() => Dimensions.get('window').height);
 
   /**
-   * A one-time "opening" flourish for the brand mark only — NOT a wrapper
-   * around the form. An earlier version used Reanimated's `entering` layout
-   * animation around the whole step (form included), which left the phone
-   * field untappable: `entering`/`exiting` drive Fabric's layout-animation
-   * snapshot machinery, which has known touch/focus interference with a
-   * TextInput it hosts. Core RN `Animated` only ever writes opacity/transform
-   * style props — no layout snapshotting, no touch interception — so it's
-   * safe to use even here, but it's still kept off the interactive blocks
-   * on principle: the door should never be the thing animating in.
+   * The "opening" flourish — the brand mark pops in with a spring, then the
+   * step's own content (title, subtitle, form, badges) cascades in half a
+   * beat behind it as one block, matching the layered "everything coming
+   * up" entrance the web login has. Re-runs on every `step` change too, so
+   * OTP/no-account each get their own entrance rather than only the very
+   * first paint.
+   *
+   * Both are core RN `Animated`, not Reanimated — deliberately. An earlier
+   * version used Reanimated's `entering` layout animation around the whole
+   * step (form included), which left the phone field untappable:
+   * `entering`/`exiting` drive Fabric's layout-animation snapshot
+   * machinery, which has known touch/focus interference with a TextInput it
+   * hosts. Core `Animated` only ever writes opacity/transform style props —
+   * no layout snapshotting, no touch interception, and a partially-faded
+   * view is still fully tappable the instant it renders — so it's safe to
+   * wrap the content block in too, not just the mark.
    */
   const heroAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
@@ -106,6 +159,23 @@ export default function LoginScreen() {
       mass: 0.6,
     }).start();
   }, [heroAnim]);
+
+  const contentAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    contentAnim.setValue(0);
+    Animated.timing(contentAnim, {
+      toValue: 1,
+      duration: 420,
+      delay: 90,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [step, contentAnim]);
+
+  const contentAnimatedStyle = {
+    opacity: contentAnim,
+    transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
+  };
 
   /**
    * Android's hardware/gesture back button otherwise pops the OS's own
@@ -167,15 +237,22 @@ export default function LoginScreen() {
               {step !== 'no-account' ? <StepDots count={2} activeIndex={stepIndex} /> : null}
             </Animated.View>
 
-            {/* Step content below is deliberately NOT wrapped in an entrance
-                animation — see the comment on heroAnim above. */}
             {step === 'phone' ? (
-              <View style={styles.stepBlock}>
+              <Animated.View style={[styles.stepBlock, contentAnimatedStyle]}>
                 <Text style={styles.title}>Sign in to OneView</Text>
                 <Text style={styles.subtitle}>
                   Everything you linked — stocks, funds, deposits and your bank — read back to you in one place.
                 </Text>
-                <PhoneEntryForm onSubmit={requestCode} busy={sending} />
+                {/* Set by auth.tsx's automatic sign-out (session-events.ts)
+                    when a 401 means the real server session is gone even
+                    though this device still thought it was signed in —
+                    without this, a reader landing back here with no
+                    explanation would read it as the app randomly signing
+                    them out. */}
+                {expired ? (
+                  <Text style={styles.expiredNotice}>Your session expired. Sign in again to continue.</Text>
+                ) : null}
+                <PhoneEntryForm onSubmit={requestCode} busy={sending} cooldownLabel={cooldownLabel} />
                 {sendError ? <Text style={styles.error}>{sendError}</Text> : null}
                 <Text style={styles.helper}>
                   We send a one-time code to your phone. It&apos;s the same number you used when you linked your
@@ -183,11 +260,21 @@ export default function LoginScreen() {
                 </Text>
 
                 <TrustBadges />
-              </View>
+
+                {__DEV__ ? (
+                  <Pressable
+                    style={styles.demoLink}
+                    onPress={() => {
+                      void signInDemo().then(() => router.replace('/performance'));
+                    }}>
+                    <Text style={styles.demoLinkText}>View demo (populated dummy account, dev only)</Text>
+                  </Pressable>
+                ) : null}
+              </Animated.View>
             ) : null}
 
             {step === 'otp' ? (
-              <View style={styles.stepBlock}>
+              <Animated.View style={[styles.stepBlock, contentAnimatedStyle]}>
                 <Text style={styles.title}>Verify it&apos;s you</Text>
                 <OtpEntryForm
                   phone={phone}
@@ -198,11 +285,11 @@ export default function LoginScreen() {
                     setPhone('');
                   }}
                 />
-              </View>
+              </Animated.View>
             ) : null}
 
             {step === 'no-account' ? (
-              <View style={styles.stepBlock}>
+              <Animated.View style={[styles.stepBlock, contentAnimatedStyle]}>
                 <Text style={styles.title}>Almost there</Text>
                 <Text style={styles.noAccountLede}>
                   That number checks out, but there is no OneView account behind it yet.
@@ -227,7 +314,7 @@ export default function LoginScreen() {
                   }}>
                   <Text style={styles.quietButtonText}>Try a different number</Text>
                 </Pressable>
-              </View>
+              </Animated.View>
             ) : null}
           </SafeAreaView>
         </ScrollView>
@@ -263,6 +350,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: -QodeSpace[2],
   },
+  expiredNotice: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 13,
+    color: QodeColor.warning,
+    textAlign: 'center',
+  },
   title: {
     fontFamily: QodeFont.display,
     fontSize: 26,
@@ -284,6 +377,16 @@ const styles = StyleSheet.create({
     lineHeight: 19,
     color: QodeColor.textMuted,
     textAlign: 'center',
+  },
+  demoLink: {
+    alignItems: 'center',
+    paddingVertical: QodeSpace[2],
+  },
+  demoLinkText: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 12,
+    color: QodeColor.textMuted,
+    textDecorationLine: 'underline',
   },
   noAccountLede: {
     fontFamily: QodeFont.uiRegular,

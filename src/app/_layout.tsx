@@ -1,4 +1,4 @@
-import { Inter_400Regular, Inter_600SemiBold, useFonts as useInterFonts } from '@expo-google-fonts/inter';
+import { Lato_400Regular, Lato_700Bold, useFonts as useLatoFonts } from '@expo-google-fonts/lato';
 import {
   PlayfairDisplay_500Medium,
   PlayfairDisplay_700Bold,
@@ -12,6 +12,7 @@ import { StyleSheet, useColorScheme } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { QodeColor } from '@/constants/qode-theme';
 import { AuthProvider } from '@/lib/auth';
 
@@ -52,7 +53,7 @@ SystemUI.setBackgroundColorAsync(QodeColor.greenDeep);
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   usePlayfairFonts({ PlayfairDisplay_500Medium, PlayfairDisplay_700Bold });
-  useInterFonts({ Inter_400Regular, Inter_600SemiBold });
+  useLatoFonts({ Lato_400Regular, Lato_700Bold });
 
   return (
     // Required by react-native-screens' native-stack (what expo-router's
@@ -73,7 +74,12 @@ export default function RootLayout() {
               gradient, on both platforms, always (not conditioned on
               colorScheme: the app doesn't have a light theme). */}
           <StatusBar style="light" />
-          <Stack screenOptions={{ headerShown: false }} />
+          {/* Inside AuthProvider, not outside it — a screen crashing and
+              recovering via "Try again" (ErrorBoundary.tsx) should not also
+              cost the reader their session. */}
+          <ErrorBoundary>
+            <Stack screenOptions={{ headerShown: false }} />
+          </ErrorBoundary>
         </ThemeProvider>
       </AuthProvider>
     </GestureHandlerRootView>

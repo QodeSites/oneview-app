@@ -5,6 +5,7 @@
  */
 
 const GROUPED = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
+const GROUPED_2 = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export const DASH = '—';
 
@@ -12,6 +13,17 @@ export const DASH = '—';
 export function rupees(n: number | null): string {
   if (n === null || !Number.isFinite(n)) return DASH;
   return `₹${GROUPED.format(Math.round(n))}`;
+}
+
+/** Full rupees with paise: ₹6,41,109.20 — for a holding row's expanded
+ * detail, where the summary row already rounds. Matches web's own
+ * `rupeesExact` exactly, negative sign included: unlike `money()`, this
+ * doesn't special-case the sign to sit outside the ₹ symbol (web's own
+ * source doesn't either — `₹-500.00`, not `-₹500.00`), kept as-is rather
+ * than "fixed" to a nicer format web itself doesn't use. */
+export function rupeesExact(n: number | null): string {
+  if (n === null || !Number.isFinite(n)) return DASH;
+  return `₹${GROUPED_2.format(n)}`;
 }
 
 /** Money, written out in full — same as rupees() here (no lakh/crore shorthand). */
@@ -34,7 +46,8 @@ export function pct(n: number | null, digits = 2): string {
 }
 
 /** "7 Sept 2026" — same en-GB day/short-month/year format as the web app. */
-export function dayLabel(value: string): string {
+export function dayLabel(value: string | null): string {
+  if (value === null) return DASH;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return DASH;
   return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
@@ -45,6 +58,17 @@ export function monthLabel(value: string): string {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return DASH;
   return `${d.toLocaleString('en-GB', { month: 'short', timeZone: 'UTC' })} ${String(d.getUTCFullYear()).slice(2)}`;
+}
+
+/** "Sept 2025" — full 4-digit year, for a card's date-range subtitle (e.g.
+ * Segment Analysis' "Large Cap · Sept 2025 – Sept 2026"). `monthLabel`'s
+ * 2-digit year is right for a chart's cramped x-axis ticks but read as
+ * "Sep 25" there and reported as wrong (16 Sep) where there's room to just
+ * say the year. */
+export function monthYearLabel(value: string): string {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return DASH;
+  return d.toLocaleString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
 }
 
 /**

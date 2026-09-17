@@ -42,10 +42,21 @@ export const QodeColor = {
   surfaceBorder: 'rgba(239, 236, 211, 0.14)',
   controlBorder: 'rgba(239, 236, 211, 0.45)',
   divider: 'rgba(239, 236, 211, 0.1)',
+  /** Matches qode-oneview's --ghost exactly — a quieter cream than any
+   * existing token here (0.28 opacity, between `divider`'s 0.1 and
+   * `controlBorder`'s 0.45), used for the "fact, not scale" zero-reference
+   * line on the Three Roads chart. */
+  ghost: 'rgba(239, 236, 211, 0.28)',
 
   textPrimary: '#EFECD3',
   textSecondary: 'rgba(239, 236, 211, 0.72)',
   textMuted: 'rgba(239, 236, 211, 0.65)',
+  /** Matches qode-oneview's --faint exactly (review.css) — quieter than
+   * `textMuted`, used for the small italic date-range line above charts
+   * (web's `.rv-coverage`). Coincidentally the same numeric value as
+   * `controlBorder`, which stays a separate token since that one names a
+   * border use, not a text color. */
+  faint: 'rgba(239, 236, 211, 0.45)',
   textOnAccent: '#002017',
 
   accent: '#DABD38',
@@ -61,12 +72,26 @@ export const QodeColor = {
   seriesClient: '#DABD38',
   seriesStrategy: '#4ADE80',
   seriesBenchmark: 'rgba(239, 236, 211, 0.55)',
+  /** BSE/Sensex's own tint (web's --series-benchmark-alt) — kept apart from
+   * seriesBenchmark so a chart carrying both BSE and NIFTY draws two lines
+   * a reader can tell apart, same reasoning as web's own comment on
+   * `benchmarkColor()` in from-analysis.ts. */
+  seriesBenchmarkAlt: 'rgba(143, 190, 255, 0.75)',
 
   /** Cap-band identity colors, matching qode-oneview's --cap-* tokens. */
   capLarge: '#8FC48D',
   capMid: '#DABD38',
   capSmall: '#F7A860',
   capMicro: '#D4703F',
+
+  /** Segment Analysis's per-metric comparison bars (You/Strategy/Index) —
+   * "you" reuses `accent`/gold and "strategy" reuses `success`/mint, both
+   * already exact matches for web's own `--gold`/`--pos`, but the
+   * "benchmark" bar has no existing match: web's `.rv-metric__barfill--
+   * benchmark` is cream at 0.38 opacity, distinct from `seriesBenchmark`
+   * (0.55, used for chart LINES, where a bar's lower value would read too
+   * faint against gridlines). */
+  metricBarBenchmark: 'rgba(239, 236, 211, 0.38)',
 } as const;
 
 /** Strategy donut colors, matching qode-oneview's STRATEGY_COLOR[code].stroke. */
@@ -104,13 +129,19 @@ export const QodeRadius = {
 
 /**
  * Font family names, matching the useFonts() keys loaded in the root
- * layout. Web falls back to Playfair Display / Inter / system fonts when a
- * face hasn't loaded yet (e.g. first paint); native waits for useFonts()
- * before rendering, per Expo's documented pattern.
+ * layout. Playfair Display for headings/accents, Lato for body/UI —
+ * per Qode_Brand Guidelines.pdf's own Typography page, which specifies
+ * Lato (not Inter, which this used to load) for the BODY role. Lato has no
+ * 600/SemiBold weight (confirmed against the installed font package and
+ * against the brand guide's own Lato specimen, which only shows Light/
+ * Regular/Bold) — `ui` maps to Bold instead of a SemiBold that doesn't
+ * exist for this family. Web falls back to Playfair Display / Lato /
+ * system fonts when a face hasn't loaded yet (e.g. first paint); native
+ * waits for useFonts() before rendering, per Expo's documented pattern.
  */
 export const QodeFont = {
   display: 'PlayfairDisplay_500Medium',
   displayBold: 'PlayfairDisplay_700Bold',
-  ui: 'Inter_600SemiBold',
-  uiRegular: 'Inter_400Regular',
+  ui: 'Lato_700Bold',
+  uiRegular: 'Lato_400Regular',
 } as const;

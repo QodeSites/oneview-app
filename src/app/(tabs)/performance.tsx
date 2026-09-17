@@ -1,52 +1,123 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useState } from 'react';
+import { Link } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Chevron } from '@/components/Chevron';
 import { Donut } from '@/components/charts/Donut';
 import { NavChart } from '@/components/charts/NavChart';
-import { RaceBars } from '@/components/charts/RaceBars';
+import { ThreeRoads } from '@/components/charts/ThreeRoads';
 import { PageHeader } from '@/components/PageHeader';
-import { CapBandColor, QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
+import { ErrorView, LoadingView } from '@/components/RemoteStateView';
+import { CapBandColor, QodeColor, QodeFont, QodeRadius, QodeSpace, StrategyColor } from '@/constants/qode-theme';
+import { useRemoteData } from '@/hooks/use-remote-data';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { money, signedPct } from '@/lib/format';
-import { mockReviewData, type CapBand } from '@/lib/mock-data';
+import { type CapBand } from '@/lib/mock-data';
+import { getPerformance } from '@/lib/reviewApi';
 
 /**
  * Performance & Overview, merged into one screen exactly like
  * qode-oneview's own /review page (PortfolioHero + Performance + Overview
- * stacked) — MVP preview with dummy data shaped like the real contracts.
- * Every card here corresponds to one on the real screen: the journey
- * chart, three roads, the gap readout, your mix, the allocation donut
- * with its accordion, and alerts. See qode-oneview's Performance.tsx and
- * Overview.tsx for the originals.
+ * stacked) — now real data, via `GET /api/mobile/performance`
+ * (src/lib/reviewApi.ts; see MOBILE_BACKEND_CHANGES.md for what that route
+ * wraps). Every card here corresponds to one on the real screen: the
+ * journey chart, three roads, the gap readout, the allocation donut with
+ * its accordion, and alerts.
  *
- * `performance.takeaways` (a real field on the mock `Performance` type)
- * is deliberately NOT rendered here. It restated figures already shown
- * twice over — "Beat the benchmark" duplicated the gap readout's "Return
- * above {benchmark}" row, "Behind the Qode mix" duplicated its "Your Qode
- * Mix, against this portfolio" row, and "Concentration" duplicated the
- * Alerts card below. The real Performance.tsx's own code comments are
- * explicit about cutting exactly this kind of restatement ("every fact
- * appeared at least twice... this screen has been cut back twice to
- * remove duplication") — rendering takeaways here would have reintroduced
- * the thing the original design deliberately removed.
+ * "Your mix, on the same three strategies" (added back 16 Sep, having been
+ * wrongly dropped as unbuildable): it does NOT come from `mix` — that field
+ * really is only the Journey chart's NAV series, as the note below explains.
+ * But web's own version of this card (Performance.tsx's `yourBlend`) never
+ * reads a percentage-blend field from the API either — it derives one
+ * client-side from `data.capMix`, the exact same field this screen's
+ * "Allocation by market cap" donut already reads. `bandPct`/`RECOMMENDED_
+ * BLEND` below port that derivation verbatim (checked directly against
+ * `Performance.tsx` and `features/review/config.ts`).
+ *
+ * The Journey chart, Three Roads and the Wealth Gap card gate on `mix`/
+ * `gap` directly — NOT `data.performance`, which is permanently hardcoded
+ * `null` everywhere in qode-oneview (real accounts and demo alike; dead
+ * code from before the real web Performance screen was rewritten to read
+ * `mix`/`gap` as page-level props instead). Gating on it here meant these
+ * three sections never rendered for ANY account (reported 15 Sep — only
+ * the allocation donut, which has its own independent `data.capMix` gate,
+ * ever showed). Journey gates on `mix.length >= 2`, matching web's own
+ * `hasChart` exactly; Three Roads and the Wealth Gap card gate on `gap`
+ * alone, also matching web — the "roads" themselves are built from
+ * `gap.benchmark`/`.you`/`.qode`, the same three legs the mock's old,
+ * separately-fabricated `performance.bars` represented.
  */
+
+/** Verbatim from qode-oneview's `features/review/config.ts` — the fixed-weight fallback for "Your mix" below. */
+const RECOMMENDED_BLEND = [
+  {
+    code: 'QAW' as const,
+    name: 'Qode All Weather',
+    percent: 66.7,
+    role: 'The core. Built to hold up across market conditions rather than to win any one of them.',
+  },
+  {
+    code: 'QTF' as const,
+    name: 'Qode Tactical Fund',
+    percent: 11.1,
+    role: "The tactical sleeve, moving with the market's own signal rather than sitting still.",
+  },
+  {
+    code: 'QGF' as const,
+    name: 'Qode Growth Fund',
+    percent: 22.2,
+    role: 'The growth sleeve, in smaller companies — more return on offer, and more of a ride.',
+  },
+];
+
 export default function PerformanceScreen() {
-  const data = mockReviewData;
-  const perf = data.performance;
-  const gap = data.gap;
-  const classes = data.assetCards.filter((c) => c.value > 0);
+  const { state, refreshing, refresh } = useRemoteData(getPerformance);
   const [openBand, setOpenBand] = useState<CapBand | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const tabBarHeight = useTabBarHeight();
 
-  // Mock delay only; there's no real POST /api/refresh to call yet
-  // (SPEC-mobile-dashboard.md).
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => setRefreshing(false), 900);
-  }, []);
+  if (state.status === 'loading') return <LoadingView />;
+  if (state.status === 'error') {
+    return (
+      <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <ErrorView message={state.message} onRetry={refresh} />
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
+
+  const { data, mix, gap, calculating } = state.data;
+  const classes = data.assetCards.filter((c) => c.value > 0);
+
+  // The date range the Journey chart covers — web's own `window` (checked
+  // directly against Performance.tsx), missing here entirely until now
+  // (reported 16 Sep). `gap.from`/`.to` when the wealth-gap comparison
+  // exists; otherwise falls back to the drawn client series' own first and
+  // last dates, so the chart still states its own range even on an account
+  // without a benchmark comparison.
+  const clientLine = mix?.find((s) => s.role === 'client') ?? null;
+  const chartWindow = gap
+    ? `${gap.from} to ${gap.to}`
+    : clientLine
+      ? `${clientLine.points[0]?.date} to ${clientLine.points[clientLine.points.length - 1]?.date}`
+      : null;
+
+  // "Your mix" — see the component doc comment. `bandPct`/`yoursTotal`/
+  // `yourBlend` port Performance.tsx's own derivation verbatim: large/mid/
+  // small cap mapped onto QAW/QTF/QGF respectively (micro and unclassified
+  // have no equity strategy and are left out entirely, same as web), then
+  // re-scaled to total 100 so the three shares are comparable to the fixed
+  // blend they sit beside.
+  const bandPct = (band: string) => data.capMix.find((s) => s.band === band)?.percent ?? 0;
+  const yoursRaw = { QAW: bandPct('large'), QTF: bandPct('mid'), QGF: bandPct('small') };
+  const yoursTotal = yoursRaw.QAW + yoursRaw.QTF + yoursRaw.QGF;
+  const yourBlend =
+    yoursTotal > 0
+      ? RECOMMENDED_BLEND.map((b) => ({ ...b, percent: Number(((yoursRaw[b.code] / yoursTotal) * 100).toFixed(1)) }))
+      : null;
+  const shownBlend = yourBlend ?? RECOMMENDED_BLEND;
 
   return (
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
@@ -54,18 +125,22 @@ export default function PerformanceScreen() {
         <ScrollView
           contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + QodeSpace[3] }]}
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={QodeColor.accent} />
-          }>
-          <Text style={styles.dummyBadge}>Preview data — not your real portfolio</Text>
-
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
           <PageHeader
             title="Performance"
             subtitle="What a year did to your portfolio, and what it is made of."
             navAsOf={data.client.navAsOf}
           />
 
-          {/* ── Hero: total portfolio (PortfolioHero.tsx) ── */}
+          {calculating ? (
+            <View style={styles.calculatingCard}>
+              <Text style={styles.calculatingText}>
+                Still building your review — this can take a few minutes the first time. Pull down to check again.
+              </Text>
+            </View>
+          ) : null}
+
+          {/* ── Hero: total portfolio ── */}
           <View style={styles.hero}>
             <Text style={styles.heroLabel}>Total portfolio</Text>
             <Text style={styles.heroValue}>{money(data.totals.portfolio)}</Text>
@@ -73,38 +148,61 @@ export default function PerformanceScreen() {
               Securities {money(data.totals.securities)} · Bank &amp; deposits {money(data.totals.cash)}
             </Text>
             <Text style={styles.heroMeta}>
-              {data.client.holdingsCount} holdings across {data.client.assetTypeCount} asset types · as of{' '}
-              {data.client.asOf}
+              {data.client.holdingsCount} holdings across {data.client.assetTypeCount} asset{' '}
+              {data.client.assetTypeCount === 1 ? 'type' : 'types'}
             </Text>
-            <View style={styles.classRow}>
-              {classes.map((c) => (
-                <View key={c.type} style={styles.classItem}>
-                  <Text style={styles.classLabel}>{c.label}</Text>
-                  <Text style={styles.classValue}>{money(c.value)}</Text>
-                  <Text style={styles.classShare}>{c.sharePercent.toFixed(1)}%</Text>
-                </View>
-              ))}
-            </View>
+            {classes.length ? (
+              <View style={styles.classRow}>
+                {classes.map((c) => (
+                  <View key={c.type} style={styles.classItem}>
+                    <Text style={styles.classLabel}>{c.label}</Text>
+                    <Text style={styles.classValue}>{money(c.value)}</Text>
+                    {/* `c.countLabel` ("15 positions", "5 schemes", "1 account")
+                        was already on this payload (mirrors web's own
+                        `assetCards` exactly) — this card just wasn't
+                        printing it. `toFixed(1)`, not `(2)`, to match web's
+                        own PortfolioHero.tsx precision on this figure. */}
+                    <Text style={styles.classShare}>
+                      {c.sharePercent.toFixed(1)}% · {c.countLabel}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null}
           </View>
 
-          {perf ? (
+          {mix && mix.length >= 2 ? (
             <>
-              {/* ── The Journey ── */}
+              {chartWindow ? <Text style={styles.coverage}>{chartWindow}</Text> : null}
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>The Journey</Text>
-                <NavChart series={perf.journey} />
+                <NavChart series={mix} />
               </View>
+            </>
+          ) : null}
 
+          {gap ? (
+            <>
               {/* ── Three roads ── */}
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>
                   Three roads from <Text style={styles.cardTitleFig}>{money(gap.amount)}</Text>
                 </Text>
+                {/* Matches web's own caption exactly (Performance.tsx) —
+                    this was missing its closing clause entirely (reported
+                    16 Sep: "this sentence is not complete"), stopping at
+                    "same value." instead of stating what the three lines'
+                    shared starting point actually demonstrates. Spacing
+                    between this and the chart below doesn't depend on how
+                    many lines this text wraps to either way — `ThreeRoads`
+                    carries its own fixed `marginTop` (see that component),
+                    not a value tuned to this specific caption's height. */}
                 <Text style={styles.cardCaption}>
                   The portfolio was valued at {money(gap.amount)} on {gap.from}, one year before the most recent
-                  valuation. All three lines begin from that same value.
+                  valuation. All three lines begin from that same value, so the difference between them reflects
+                  return alone.
                 </Text>
-                <RaceBars bars={perf.bars} />
+                <ThreeRoads gap={gap} />
               </View>
 
               {/* ── Where the gap is: sentence + readout ── */}
@@ -116,20 +214,39 @@ export default function PerformanceScreen() {
                 </Text>
 
                 <View style={styles.gapStrip}>
-                  <GapFigure label="Benchmark Gap" value={gap.benchmarkGap} note={`Your portfolio against ${gap.benchmark.label}.`} />
+                  <GapFigure
+                    label="Benchmark Gap"
+                    value={gap.benchmarkGap}
+                    note={`Your portfolio against ${gap.benchmark.label}.`}
+                  />
                   <Text style={styles.gapOp}>+</Text>
-                  <GapFigure label="Alpha Potential" value={gap.alphaPotential} note="What Qode's strategies added over the index, historically." />
+                  <GapFigure
+                    label="Alpha Potential"
+                    value={gap.alphaPotential}
+                    note="What Qode's strategies added over the index, historically."
+                  />
                   <Text style={styles.gapOp}>=</Text>
-                  <GapFigure label="Total Wealth Gap" value={gap.totalWealthGap} note="Your portfolio against the Qode mix." total />
+                  <GapFigure
+                    label="Total Wealth Gap"
+                    value={gap.totalWealthGap}
+                    note="Your portfolio against the Qode mix."
+                    total
+                  />
                 </View>
 
                 <View style={styles.readout}>
                   <Text style={styles.readoutHead}>In summary</Text>
                   <View style={styles.readoutRow}>
                     <Text style={styles.readoutKey}>Return above {gap.benchmark.label}</Text>
-                    <Text style={[styles.readoutVal, gap.you.percent >= gap.benchmark.percent ? styles.pos : styles.neg]}>
-                      {signedPct(gap.you.percent - gap.benchmark.percent)}
-                    </Text>
+                    {/* Cream, not red for a shortfall here — a deliberate
+                        mobile-only choice at the reader's own request (16
+                        Sep). Checked directly against review.css first:
+                        web's own `.rv-readout__v` DOES use plain `rv-pos`/
+                        `rv-neg` (green/red) for this exact figure, no
+                        override found — so this is a real, disclosed
+                        deviation from web, not a fix for a web-matching
+                        bug. */}
+                    <Text style={styles.readoutVal}>{signedPct(gap.you.percent - gap.benchmark.percent)}</Text>
                   </View>
                   <View style={styles.readoutRow}>
                     <Text style={styles.readoutKey}>Your Qode Mix, against this portfolio</Text>
@@ -137,6 +254,39 @@ export default function PerformanceScreen() {
                       {signedPct(gap.qode.percent - gap.you.percent)}
                     </Text>
                   </View>
+
+                  {/* Web's own `rv-compare` table (Performance.tsx) — missing
+                      here entirely until now (reported 16 Sep). No new
+                      computation needed: every `Series` is rebased to 100 at
+                      the window's start, so `s.end - 100` IS the window's
+                      return — exactly what web's `seriesMetrics().cagr` also
+                      computes from the same rebased series (confirmed by
+                      reading both `wealthGap()`'s `leg()` helper and
+                      `engineStyleMetrics` directly). `gap.you.percent`/
+                      `gap.qode.percent` are already that number; recomputing
+                      it from `mix` again would just be the same math twice. */}
+                  <View style={styles.compare}>
+                    <View style={styles.compareHead}>
+                      <View style={styles.compareHeadSpacer} />
+                      <Text style={styles.compareCol}>Portfolio</Text>
+                      <Text style={styles.compareCol}>Your Qode Mix</Text>
+                    </View>
+                    <View style={styles.compareRow}>
+                      <Text style={styles.compareKey}>Annualised return</Text>
+                      {/* Same deliberate deviation as the readout row above
+                          — cream, not red for a negative figure here, at
+                          the reader's own request. Web's real
+                          `.rv-compare__v` also uses plain rv-pos/rv-neg
+                          for this exact "Portfolio" column, so this is a
+                          disclosed mobile-only choice, not a web-matching
+                          fix. */}
+                      <Text style={styles.compareVal}>
+                        {signedPct(gap.you.percent)}
+                      </Text>
+                      <Text style={[styles.compareVal, styles.compareValGold]}>{signedPct(gap.qode.percent)}</Text>
+                    </View>
+                  </View>
+
                   <Text style={styles.readoutFoot}>
                     All figures are calculated from the three return series shown in the chart. Past performance,
                     not a forecast.
@@ -144,104 +294,132 @@ export default function PerformanceScreen() {
                 </View>
               </View>
 
-              {/* ── Your mix ── */}
+              {/* ── Your mix, on the same three strategies ──
+                  Was wrongly dropped as unbuildable — see the component doc
+                  comment. Only the default "yours" view (web's own default);
+                  the alternate "risk profile" tab needs `calculateScores()`
+                  ported too, a separate risk-scoring algorithm, not added
+                  here. */}
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Your mix, on the same three strategies</Text>
+                {/* Web's `rv-chip` link to `/review/risk-profile`. Web turns
+                    this into a view toggle once answers are saved; that
+                    second view isn't ported, so mobile always links. */}
+                <Link href="/risk-profile" asChild>
+                  <Pressable style={styles.riskChip}>
+                    <Text style={styles.riskChipText}>Your risk profile →</Text>
+                  </Pressable>
+                </Link>
                 <Text style={styles.cardCaption}>
-                  Your money, split the way it sits today —{' '}
-                  {data.mixBlend.map((s) => `${s.name} ${s.percent}%`).join(', ')} — large cap mapped to Qode All
-                  Weather, mid to Qode Tactical Fund, small to Qode Growth Fund.
+                  {yourBlend
+                    ? 'Straight from your own Segment Analysis donut, mapped onto Qode’s three strategies — Large Cap → Qode All Weather, Mid Cap → Qode Tactical Fund, Small Cap → Qode Growth Fund. Others has no equity strategy, so it is left out and the three shares are re-scaled to total 100%.'
+                    : 'A fixed model mix of Qode’s strategies, computed daily and rebased to 100 on the same day as every other line. It is what that mix did over this window — not a portfolio tailored to you, and not advice.'}
                 </Text>
-
-                <View style={styles.mixBar}>
-                  {data.mixBlend.map((s) => (
-                    <View key={s.code} style={{ flexGrow: s.percent, backgroundColor: s.color }} />
-                  ))}
-                </View>
-
-                <View style={styles.sleeves}>
-                  {data.mixBlend.map((s) => (
-                    <View key={s.code} style={styles.sleeve}>
-                      <View style={styles.sleeveHead}>
-                        <View style={[styles.sleeveDot, { backgroundColor: s.color }]} />
-                        <Text style={styles.sleevePct}>{s.percent}%</Text>
+                {/* `alignItems: 'center'`, not the shared `donutRow`'s own
+                    `flex-start` (fine for the allocation card below, where
+                    the legend is short) — this legend carries a role
+                    description under every row, making it noticeably
+                    taller than the donut beside it, which then read as
+                    pinned to the top of the row instead of centered
+                    against it (reported 16 Sep). */}
+                <View style={[styles.donutRow, styles.donutRowCenter]}>
+                  <Donut
+                    size={130}
+                    slices={shownBlend.map((b) => ({ label: b.name, percent: b.percent, color: StrategyColor[b.code] }))}
+                  />
+                  <View style={styles.legend}>
+                    {shownBlend.map((b) => (
+                      <View key={b.code} style={styles.blendRow}>
+                        <View style={styles.blendHead}>
+                          <View style={[styles.legendSwatch, { backgroundColor: StrategyColor[b.code] }]} />
+                          <Text style={styles.legendLabel}>{b.name}</Text>
+                          <Text style={styles.blendPercent}>{b.percent.toFixed(1)}%</Text>
+                        </View>
+                        <Text style={styles.blendRole}>{b.role}</Text>
                       </View>
-                      <Text style={styles.sleeveName}>{s.name}</Text>
-                      <Text style={styles.sleeveRole}>{s.role}</Text>
-                    </View>
-                  ))}
+                    ))}
+                  </View>
                 </View>
-
-                <Text style={styles.disclaimer}>
-                  Not advice or a portfolio built for you, and one past year is not a forecast — the same mix over a
-                  different window gives a different number.
-                </Text>
               </View>
             </>
           ) : null}
 
-          {/* ── Allocation by market cap (Overview.tsx) ── */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Allocation by market cap</Text>
-            <View style={styles.donutRow}>
-              <Donut
-                size={150}
-                slices={data.capMix.map((s) => ({ label: s.label, percent: s.percent, color: CapBandColor[s.band] }))}
-                centerLabel="Portfolio"
-                centerValue={money(data.totals.portfolio)}
-              />
-              <View style={styles.legend}>
-                {data.capMix.map((s) => {
-                  const rows = data.capContents[s.band];
-                  const open = openBand === s.band;
-                  return (
-                    <View key={s.band}>
-                      <Pressable
-                        style={styles.legendRow}
-                        onPress={() => rows?.length && setOpenBand(open ? null : s.band)}>
-                        <View style={[styles.legendSwatch, { backgroundColor: CapBandColor[s.band] }]} />
-                        <Text style={styles.legendLabel}>
-                          {s.label} {s.percent.toFixed(1)}%
-                        </Text>
-                        {rows?.length ? (
-                          <Text style={styles.legendCaret}>{open ? '▾' : '▸'}</Text>
-                        ) : null}
-                      </Pressable>
-                      {open && rows?.length ? (
-                        <View style={[styles.legendPanel, { borderLeftColor: CapBandColor[s.band] }]}>
-                          {rows.slice(0, 8).map((r) => (
-                            <View key={r.name} style={styles.legendPanelRow}>
-                              <Text style={styles.legendPanelName} numberOfLines={1}>
-                                {r.name}
-                              </Text>
-                              <Text style={styles.legendPanelValue}>{money(r.value)}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                })}
+          {/* ── Allocation by market cap ── */}
+          {data.capMix.length ? (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Allocation by market cap</Text>
+              {/* Donut centered above a full-width legend, not beside a
+                  narrow one (changed 16 Sep, at the reader's own request):
+                  tapping a band expands its stock list right there, and a
+                  legend column squeezed beside the donut left that list
+                  cramped. Full card width gives it real room. */}
+              <View style={styles.donutCenter}>
+                <Donut
+                  size={150}
+                  slices={data.capMix.map((s) => ({ label: s.label, percent: s.percent, color: CapBandColor[s.band] }))}
+                  centerLabel="Portfolio"
+                  centerValue={money(data.totals.portfolio)}
+                />
               </View>
-            </View>
-            <Text style={styles.coverageNote}>
-              Cap labels come from SEBI&apos;s own classification, matched by ISIN. {data.capCoverage.valued} of{' '}
-              {data.capCoverage.total} direct positions matched, covering {data.capCoverage.valuePercent}% of your
-              stock value. ETFs are not looked through.
-            </Text>
-          </View>
-
-          {/* ── Alerts ── */}
-          {data.alerts.length ? (
-            <View style={styles.alerts}>
-              {data.alerts.map((a) => (
-                <View key={a.title} style={styles.alert}>
-                  <Text style={styles.alertTitle}>⚠ {a.title}</Text>
-                  <Text style={styles.alertBody}>{a.body}</Text>
-                </View>
-              ))}
+              <View style={[styles.legend, styles.legendFull]}>
+                {data.capMix.map((s) => {
+                    const rows = data.capContents[s.band];
+                    const open = openBand === s.band;
+                    return (
+                      <View key={s.band}>
+                        <Pressable
+                          style={styles.legendRow}
+                          onPress={() => rows?.length && setOpenBand(open ? null : s.band)}>
+                          <View style={[styles.legendSwatch, { backgroundColor: CapBandColor[s.band] }]} />
+                          <Text style={styles.legendLabel}>
+                            {s.label} {s.percent.toFixed(2)}%
+                          </Text>
+                          {rows?.length ? <Chevron open={open} /> : null}
+                        </Pressable>
+                        {open && rows?.length ? (
+                          <View style={[styles.legendPanel, { borderLeftColor: CapBandColor[s.band] }]}>
+                            {rows.slice(0, 8).map((r) => (
+                              <View key={r.name} style={styles.legendPanelRow}>
+                                <Text style={styles.legendPanelName} numberOfLines={1}>
+                                  {r.name}
+                                </Text>
+                                <Text style={styles.legendPanelValue}>{money(r.value)}</Text>
+                              </View>
+                            ))}
+                            {/* Matches web's own `.rv-capacc__more` exactly
+                                (`Overview.tsx`, confirmed directly) —
+                                missing on mobile entirely until now
+                                (reported 16 Sep). Not shown for
+                                `unclassified`, same as web. */}
+                            {s.band !== 'unclassified' ? (
+                              <Link
+                                href={{ pathname: '/segments', params: { cap: s.band } }}
+                                style={styles.legendMore}>
+                                See how this band performed →
+                              </Link>
+                            ) : null}
+                          </View>
+                        ) : null}
+                      </View>
+                    );
+                  })}
+              </View>
+              <Text style={styles.coverageNote}>
+                Cap labels come from SEBI&apos;s own classification, matched by ISIN. {data.capCoverage.valued} of{' '}
+                {data.capCoverage.total} direct positions matched, covering {data.capCoverage.valuePercent}% of your
+                stock value. ETFs are not looked through.
+              </Text>
             </View>
           ) : null}
+
+          {/* Concentration alerts removed (16 Sep, at the reader's own
+              request) — confirmed against qode-oneview directly: the real
+              web page already dropped this exact box on request months
+              ago (Overview.tsx's own comment: "The Concentration alert box
+              was removed on request (3 Sep)"). The mobile API route still
+              computes and returns `data.alerts` (`concentrationAlerts()`,
+              unchanged there — out of scope here), just no longer
+              rendered, matching what web itself actually shows today. */}
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
@@ -266,11 +444,18 @@ const styles = StyleSheet.create({
     paddingTop: QodeSpace[4],
     gap: QodeSpace[4],
   },
-  dummyBadge: {
+  calculatingCard: {
+    backgroundColor: QodeColor.surfaceRaised,
+    borderWidth: 1,
+    borderColor: QodeColor.accentBorder,
+    borderRadius: QodeRadius.md,
+    padding: QodeSpace[4],
+  },
+  calculatingText: {
     fontFamily: QodeFont.uiRegular,
-    fontSize: 11,
-    color: QodeColor.warning,
-    textAlign: 'center',
+    fontSize: 13,
+    lineHeight: 19,
+    color: QodeColor.textSecondary,
   },
   hero: { paddingVertical: QodeSpace[4] },
   heroLabel: {
@@ -281,10 +466,18 @@ const styles = StyleSheet.create({
     color: QodeColor.textMuted,
   },
   heroValue: {
-    fontFamily: QodeFont.display,
+    // Lato (Bold), not Playfair, and gold not cream — confirmed against
+    // web's own `.rv-hero__value` CSS and its own comment there: "this is
+    // the number the whole page is about, and it has to be read as a
+    // quantity rather than admired as a headline." Gold here matches the
+    // Curtain's "user's own data" rule (the same reasoning `seriesClient`
+    // already applies to a chart's own client line) — this is that same
+    // idea for the one number the whole screen exists to answer.
+    fontFamily: QodeFont.ui,
     fontSize: 40,
-    color: QodeColor.cream,
+    color: QodeColor.gold,
     marginTop: QodeSpace[1],
+    fontVariant: ['tabular-nums'],
   },
   heroSplit: {
     fontFamily: QodeFont.uiRegular,
@@ -315,8 +508,26 @@ const styles = StyleSheet.create({
     borderRadius: QodeRadius.lg,
     padding: QodeSpace[4],
   },
+  // Matches web's `.rv-coverage` exactly (review.css) — the date-range
+  // line sitting just above the Journey card, itself outside any card.
+  coverage: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 12,
+    fontStyle: 'italic',
+    color: QodeColor.faint,
+    marginTop: -2,
+  },
   cardTitle: { fontFamily: QodeFont.display, fontSize: 17, color: QodeColor.cream },
-  cardTitleFig: { color: QodeColor.cream },
+  // Lato, not inherited Playfair — confirmed against review.css's own
+  // "final sweep: nothing numeric keeps the display face" rule, which lists
+  // `.rv-fig` (this exact figure, "Three roads from ₹X") explicitly, with
+  // its own comment calling out this precise trap: "a rupee value written
+  // into [a words-only element] inherits the display face however
+  // carefully the list below is maintained." Only `fontFamily`/tabular-nums
+  // are overridden — weight (600 there) and color both still correctly
+  // inherit from `cardTitle`, same as `.rv-fig` inheriting from
+  // `.rv-card__title` on web.
+  cardTitleFig: { fontFamily: QodeFont.ui, fontVariant: ['tabular-nums'] },
   cardCaption: {
     fontFamily: QodeFont.uiRegular,
     fontSize: 12,
@@ -357,38 +568,46 @@ const styles = StyleSheet.create({
   },
   readoutRow: { flexDirection: 'row', justifyContent: 'space-between' },
   readoutKey: { fontFamily: QodeFont.uiRegular, fontSize: 12.5, color: QodeColor.textSecondary, flex: 1 },
-  readoutVal: { fontFamily: QodeFont.ui, fontSize: 13 },
+  readoutVal: { fontFamily: QodeFont.ui, fontSize: 13, color: QodeColor.cream },
   readoutValGold: { color: QodeColor.accent },
   pos: { color: QodeColor.success },
   neg: { color: QodeColor.error },
   readoutFoot: { fontFamily: QodeFont.uiRegular, fontSize: 10.5, color: QodeColor.textMuted, marginTop: QodeSpace[1] },
-  mixBar: {
-    flexDirection: 'row',
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginTop: QodeSpace[4],
+  compare: {
+    marginTop: QodeSpace[2],
+    paddingTop: QodeSpace[2],
+    borderTopWidth: 1,
+    borderTopColor: QodeColor.divider,
   },
-  sleeves: { flexDirection: 'row', gap: QodeSpace[2], marginTop: QodeSpace[3] },
-  sleeve: { flex: 1 },
-  sleeveHead: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  sleeveDot: { width: 7, height: 7, borderRadius: 3.5 },
-  sleevePct: { fontFamily: QodeFont.ui, fontSize: 14, color: QodeColor.textPrimary },
-  sleeveName: { fontFamily: QodeFont.ui, fontSize: 11, color: QodeColor.textPrimary, marginTop: 3 },
-  sleeveRole: { fontFamily: QodeFont.uiRegular, fontSize: 10, color: QodeColor.textMuted, marginTop: 2, lineHeight: 13 },
-  disclaimer: {
+  compareHead: { flexDirection: 'row', marginBottom: QodeSpace[1] },
+  compareHeadSpacer: { flex: 1 },
+  compareCol: {
+    flex: 1,
     fontFamily: QodeFont.uiRegular,
     fontSize: 10.5,
-    lineHeight: 15,
     color: QodeColor.textMuted,
-    marginTop: QodeSpace[3],
+    textAlign: 'right',
   },
+  compareRow: { flexDirection: 'row', alignItems: 'center' },
+  compareKey: { flex: 1, fontFamily: QodeFont.uiRegular, fontSize: 12.5, color: QodeColor.textSecondary },
+  compareVal: { flex: 1, fontFamily: QodeFont.ui, fontSize: 13, textAlign: 'right', color: QodeColor.cream },
+  compareValGold: { color: QodeColor.accent },
   donutRow: { flexDirection: 'row', gap: QodeSpace[4], marginTop: QodeSpace[3], alignItems: 'flex-start' },
+  donutRowCenter: { alignItems: 'center' },
+  donutCenter: { alignItems: 'center', marginTop: QodeSpace[3] },
   legend: { flex: 1, gap: QodeSpace[1] },
+  // Full width, not sharing a row with the donut — `flex: 1` above is
+  // meaningless without a flex-row sibling to share space with; this
+  // resets it and gives the now-standalone legend its own top margin
+  // instead of inheriting `donutRow`'s (gone here).
+  legendFull: { flex: undefined, width: '100%', marginTop: QodeSpace[4] },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: QodeSpace[2], paddingVertical: QodeSpace[1] },
   legendSwatch: { width: 10, height: 10, borderRadius: 5 },
   legendLabel: { fontFamily: QodeFont.uiRegular, fontSize: 12, color: QodeColor.textPrimary, flex: 1 },
-  legendCaret: { fontFamily: QodeFont.uiRegular, fontSize: 11, color: QodeColor.textMuted },
+  blendRow: { paddingVertical: QodeSpace[1], gap: 2 },
+  blendHead: { flexDirection: 'row', alignItems: 'center', gap: QodeSpace[2] },
+  blendPercent: { fontFamily: QodeFont.ui, fontSize: 12, color: QodeColor.textPrimary },
+  blendRole: { fontFamily: QodeFont.uiRegular, fontSize: 10.5, lineHeight: 14, color: QodeColor.textMuted, marginLeft: 18 },
   legendPanel: {
     borderLeftWidth: 2,
     paddingLeft: QodeSpace[2],
@@ -399,6 +618,26 @@ const styles = StyleSheet.create({
   legendPanelRow: { flexDirection: 'row', justifyContent: 'space-between', gap: QodeSpace[2] },
   legendPanelName: { flex: 1, fontFamily: QodeFont.uiRegular, fontSize: 11, color: QodeColor.textSecondary },
   legendPanelValue: { fontFamily: QodeFont.uiRegular, fontSize: 11, color: QodeColor.textMuted },
+  legendMore: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 12,
+    color: QodeColor.accent,
+    marginTop: QodeSpace[2],
+  },
+  riskChip: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: QodeColor.controlBorder,
+    borderRadius: QodeRadius.pill,
+    paddingHorizontal: QodeSpace[4],
+    paddingVertical: QodeSpace[2],
+    marginTop: QodeSpace[3],
+  },
+  riskChipText: {
+    fontFamily: QodeFont.ui,
+    fontSize: 13,
+    color: QodeColor.textPrimary,
+  },
   coverageNote: {
     fontFamily: QodeFont.uiRegular,
     fontSize: 11,
@@ -406,14 +645,4 @@ const styles = StyleSheet.create({
     color: QodeColor.textMuted,
     marginTop: QodeSpace[4],
   },
-  alerts: { gap: QodeSpace[2] },
-  alert: {
-    backgroundColor: 'rgba(247, 168, 96, 0.08)',
-    borderWidth: 1,
-    borderColor: QodeColor.accentBorder,
-    borderRadius: QodeRadius.md,
-    padding: QodeSpace[4],
-  },
-  alertTitle: { fontFamily: QodeFont.ui, fontSize: 13, color: QodeColor.warning },
-  alertBody: { fontFamily: QodeFont.uiRegular, fontSize: 12.5, lineHeight: 18, color: QodeColor.textSecondary, marginTop: 3 },
 });

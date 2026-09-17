@@ -72,8 +72,12 @@ export function CountryCodePicker({ value, onChange }: { value: Country; onChang
         style={({ pressed }) => [styles.trigger, pressed && styles.triggerPressed]}
         onPress={() => setOpen(true)}>
         <FlagIcon iso2={value.iso2} height={16} />
-        <Text style={styles.dialCode}>+{value.dialCode}</Text>
-        <Text style={styles.chevron}>▾</Text>
+        <Text style={styles.dialCode} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+          +{value.dialCode}
+        </Text>
+        <Text style={styles.chevron} maxFontSizeMultiplier={1.3}>
+          ▾
+        </Text>
       </Pressable>
 
       <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
@@ -128,12 +132,22 @@ const styles = StyleSheet.create({
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    // `flexShrink: 0` is RN's own default for a row child with no `flex`
+    // set — spelled out here because getting it wrong is exactly what
+    // broke this: without it, the sibling phone TextInput (`flex: 1`) is
+    // the only one that can shrink, so on a narrower screen or with the
+    // system font size turned up (which grows "+91" here — capped below
+    // via `maxFontSizeMultiplier`, but couldn't be relied on alone) this
+    // row could still be pushed wider than the space available, clipping
+    // the flag/dial code against the screen edge rather than the TextInput
+    // giving up its own space first (reported 15 Sep, on a narrower phone).
+    flexShrink: 0,
+    gap: 4,
     backgroundColor: QodeColor.surface,
     borderWidth: 1,
     borderColor: QodeColor.controlBorder,
     borderRadius: QodeRadius.md,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 12,
   },
   triggerPressed: {
