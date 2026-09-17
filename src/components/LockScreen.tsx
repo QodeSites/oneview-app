@@ -20,14 +20,14 @@ function LockGlyph() {
 }
 
 /**
- * Covers the whole app while the Face ID / fingerprint lock is engaged
+ * Covers the whole app while the app lock is engaged
  * (src/lib/app-lock.tsx). Prompts on its own as soon as it appears; the
  * button retries after a cancel. "Sign out" is the way out for someone who
  * can no longer pass the prompt — it removes the lock and the session, so
  * signing back in with an SMS code opens the app unlocked.
  */
 export function LockScreen() {
-  const { locked, pending, support, unlock, clearLock } = useAppLock();
+  const { locked, pending, unlock, clearLock } = useAppLock();
   const { signOut } = useAuth();
   const [signingOut, setSigningOut] = useState(false);
 
@@ -55,7 +55,7 @@ export function LockScreen() {
               style={({ pressed }) => [styles.primary, pressed && styles.pressed]}
               onPress={() => void unlock()}>
               <LockGlyph />
-              <Text style={styles.primaryText}>Unlock with {support?.label ?? 'biometrics'}</Text>
+              <Text style={styles.primaryText}>Unlock</Text>
             </Pressable>
             <Pressable
               accessibilityRole="button"

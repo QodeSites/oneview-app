@@ -123,7 +123,7 @@ export default function MoreScreen() {
 }
 
 /**
- * Face ID / fingerprint app lock (src/lib/app-lock.tsx). Hidden on devices
+ * App lock (src/lib/app-lock.tsx) — fingerprint, face or phone PIN. Hidden on devices
  * with no enrolled biometrics — unless the lock is already on, so it can
  * always be turned back off.
  */
@@ -137,11 +137,11 @@ function SecuritySection() {
     <View style={styles.list}>
       <View style={styles.row}>
         <View style={styles.rowText}>
-          <Text style={styles.rowLabel}>{support.label} lock</Text>
-          <Text style={styles.rowHint}>Ask for {support.label} when you open the app.</Text>
+          <Text style={styles.rowLabel}>App lock</Text>
+          <Text style={styles.rowHint}>Use your fingerprint, face or phone PIN to open the app.</Text>
         </View>
         <Switch
-          accessibilityLabel={`${support.label} lock`}
+          accessibilityLabel="App lock"
           value={enabled}
           disabled={busy}
           trackColor={{ false: QodeColor.surfaceRaised, true: QodeColor.accent }}
@@ -155,8 +155,8 @@ function SecuritySection() {
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
                 } else if (value && !support.available) {
                   Alert.alert(
-                    `${support.label} isn't set up`,
-                    `Add a ${support.kind === 'face' ? 'face' : 'fingerprint'} in your phone's settings first.`,
+                    'Screen lock not set up',
+                    "Add a fingerprint or face unlock in your phone's settings first.",
                   );
                 }
               })

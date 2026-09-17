@@ -14,14 +14,14 @@ const ENABLED_KEY = 'qode.applock.enabled';
  */
 const RELOCK_AFTER_MS = 30 * 1000;
 
-export type BiometricKind = 'face' | 'fingerprint' | 'iris' | 'biometrics';
-
 export interface BiometricSupport {
-  /** The device can do biometrics AND the user has enrolled a face/finger. */
+  /**
+   * The phone has a biometric sensor AND the owner has enrolled something
+   * (fingerprint, face, …). Deliberately not which one: a phone can report
+   * face support while its owner only uses a fingerprint, so the UI just
+   * says "App lock" and lets the system prompt show whatever the phone uses.
+   */
   available: boolean;
-  kind: BiometricKind;
-  /** "Face ID", "Fingerprint", … — for button labels. */
-  label: string;
 }
 
 interface AppLockValue {
@@ -47,37 +47,15 @@ interface AppLockValue {
 const AppLockContext = createContext<AppLockValue | null>(null);
 
 async function detectSupport(): Promise<BiometricSupport> {
-  const none: BiometricSupport = { available: false, kind: 'biometrics', label: 'Biometric lock' };
-  if (Platform.OS === 'web') return none;
+  if (Platform.OS === 'web') return { available: false };
   try {
-    const [hasHardware, enrolled, types] = await Promise.all([
+    const [hasHardware, enrolled] = await Promise.all([
       LocalAuthentication.hasHardwareAsync(),
       LocalAuthentication.isEnrolledAsync(),
-      LocalAuthentication.supportedAuthenticationTypesAsync(),
     ]);
-    const T = LocalAuthentication.AuthenticationType;
-    const kind: BiometricKind = types.includes(T.FACIAL_RECOGNITION)
-      ? 'face'
-      : types.includes(T.FINGERPRINT)
-        ? 'fingerprint'
-        : types.includes(T.IRIS)
-          ? 'iris'
-          : 'biometrics';
-    const label =
-      kind === 'face'
-        ? Platform.OS === 'ios'
-          ? 'Face ID'
-          : 'Face unlock'
-        : kind === 'fingerprint'
-          ? Platform.OS === 'ios'
-            ? 'Touch ID'
-            : 'Fingerprint'
-          : kind === 'iris'
-            ? 'Iris unlock'
-            : 'Biometric lock';
-    return { available: hasHardware && enrolled, kind, label };
+    return { available: hasHardware && enrolled };
   } catch {
-    return none;
+    return { available: false };
   }
 }
 
@@ -97,7 +75,8 @@ async function prompt(message: string): Promise<boolean> {
 }
 
 /**
- * Face ID / fingerprint app lock. Opt-in from More, stored on the device
+ * App lock (fingerprint, face or the phone's PIN — whatever the phone
+ * uses). Opt-in from More, stored on the device
  * against the phone number that turned it on — so it applies only while
  * that account is signed in, and a different account signing in on the
  * same phone isn't locked by someone else's setting. When on, the app locks
@@ -180,7 +159,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
         return true;
       }
       if (!support?.available || !session) return false;
-      const ok = await prompt(`Use ${support.label} to lock Qode OneView`);
+      const ok = await prompt('Turn on app lock');
       if (!ok) return false;
       await setStorageItem(ENABLED_KEY, session.phone);
       setLockOwner(session.phone);
