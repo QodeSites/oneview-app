@@ -145,14 +145,22 @@ export default function UploadStatementScreen() {
         ) : !gate.data.casUploadEnabled ? (
           <View style={styles.centered}>
             <Text style={styles.message}>
-              Statement upload is not available right now. Please try linking your account again, or write to
-              investor.relations@qodeinvest.com.
+              Statement upload is not available right now. Write to us and we&apos;ll add your holdings for you.
             </Text>
+            <Pressable
+              style={styles.retryButton}
+              onPress={() => {
+                Linking.openURL('mailto:investor.relations@qodeinvest.com').catch(() => {});
+              }}>
+              <Text style={styles.retryText}>Email investor.relations@qodeinvest.com</Text>
+            </Pressable>
           </View>
         ) : (
           <ScrollView
             contentContainerStyle={styles.scroll}
             showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
             pointerEvents={completed ? 'none' : 'auto'}>
             <Text style={styles.intro}>Skip the wait — bring your holdings in from right here.</Text>
             <ReadyBody have={gate.data.have} onSuccess={finishAfterSuccess} />

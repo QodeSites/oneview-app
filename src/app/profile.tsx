@@ -3,6 +3,7 @@ import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { PageHeader } from '@/components/PageHeader';
+import { DetailRow, ProfileDetailsCard } from '@/components/ProfileDetailsCard';
 import { ErrorView, LoadingView } from '@/components/RemoteStateView';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { useRemoteData } from '@/hooks/use-remote-data';
@@ -61,18 +62,7 @@ export default function ProfileScreen() {
             </View>
           ) : (
             <>
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Your details</Text>
-                <Row label="Name" value={p.name ?? '—'} />
-                <Row label="Mobile" value={p.phone} />
-                <Row label="PAN" value={p.panMasked ?? '—'} />
-                <Row label="Email" value={p.email ?? '—'} />
-                <Row label="Member since" value={dayLabel(p.memberSince)} />
-                <Text style={styles.note}>
-                  To correct any of this, write to investor.relations@qodeinvest.com. Your mobile number cannot be
-                  changed here — it is what your accounts are linked against.
-                </Text>
-              </View>
+              <ProfileDetailsCard profile={p} />
 
               <View style={styles.metricsRow}>
                 <View style={styles.metric}>
@@ -108,7 +98,7 @@ export default function ProfileScreen() {
                     // funds). Not a bug to work around — web's own
                     // Profile.tsx already keys on this same composite
                     // (`${s.kind}-${s.label}`), matched here.
-                    <Row
+                    <DetailRow
                       key={`${s.kind}-${s.label}`}
                       label={s.label}
                       sub={`${s.kind} · ${s.count} ${s.count === 1 ? 'record' : 'records'}`}
@@ -130,18 +120,6 @@ export default function ProfileScreen() {
   );
 }
 
-function Row({ label, sub, value, small }: { label: string; sub?: string; value: string; small?: boolean }) {
-  return (
-    <View style={styles.row}>
-      <View style={styles.rowLeft}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        {sub ? <Text style={styles.rowSub}>{sub}</Text> : null}
-      </View>
-      <Text style={[styles.rowValue, small && styles.rowValueSmall]}>{value}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   safeArea: { flex: 1 },
@@ -160,19 +138,6 @@ const styles = StyleSheet.create({
     padding: QodeSpace[4],
   },
   cardTitle: { fontFamily: QodeFont.display, fontSize: 17, color: QodeColor.cream, marginBottom: QodeSpace[2] },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: QodeSpace[2],
-    borderTopWidth: 1,
-    borderTopColor: QodeColor.divider,
-  },
-  rowLeft: { flex: 1 },
-  rowLabel: { fontFamily: QodeFont.uiRegular, fontSize: 13, color: QodeColor.textPrimary },
-  rowSub: { fontFamily: QodeFont.uiRegular, fontSize: 11, color: QodeColor.textMuted, marginTop: 1 },
-  rowValue: { fontFamily: QodeFont.uiRegular, fontSize: 13, color: QodeColor.textSecondary },
-  rowValueSmall: { fontSize: 11.5 },
   note: {
     fontFamily: QodeFont.uiRegular,
     fontSize: 11.5,

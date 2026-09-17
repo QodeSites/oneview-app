@@ -1,22 +1,23 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { GlassView } from 'expo-glass-effect';
+import { GlassView, isLiquidGlassAvailable } from 'expo-glass-effect';
 import * as Haptics from 'expo-haptics';
-import { usePathname } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { Tabs, TabList, TabTrigger, TabSlot, TabTriggerSlotProps } from 'expo-router/ui';
 import { useEffect, useRef, useState } from 'react';
 import { LayoutChangeEvent, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HoldingsIcon, MfXrayIcon, MoreIcon, PerformanceIcon, SegmentsIcon } from './TabIcons';
 import { BuildingReview } from './BuildingReview';
-import { LoadingView } from './RemoteStateView';
+import { ErrorView, LoadingView } from './RemoteStateView';
 import { NothingYet } from './NothingYet';
 
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { useRemoteData } from '@/hooks/use-remote-data';
+import { useAuth } from '@/lib/auth';
 import { isDemoActive } from '@/lib/demo';
-import { getReview } from '@/lib/reviewApi';
+import { getReview, type ReviewPayload } from '@/lib/reviewApi';
 
 /**
  * "Floating Pill" — picked from the four options reviewed as an artifact
@@ -35,12 +36,10 @@ import { getReview } from '@/lib/reviewApi';
  * tab screen uses to reserve enough bottom clearance — same relationship
  * that file's comment already had with this one's old chrome height.
  *
- * iOS: `GlassView` renders real Liquid Glass via UIVisualEffectView on iOS
- * 26+ and is a plain View everywhere else (confirmed in
- * expo-glass-effect's own source — GlassView.js is `<View {...props} />`
- * with no iOS-only guard needed here), so it's used unconditionally rather
- * than branched. Android gets its own flat rail-bg fallback color, since
- * the glass tint is iOS-only.
+ * `GlassView` renders real Liquid Glass on iOS 26+ and is a plain View on
+ * Android, so it's used unconditionally. Anywhere Liquid Glass isn't
+ * available (Android, or an iPhone on iOS 25 or earlier) the bar gets the
+ * flat rail-bg color instead — see `HAS_LIQUID_GLASS`.
  */
 const TABS = [
   { name: 'performance', href: '/performance', label: 'Performance', Icon: PerformanceIcon },
@@ -51,6 +50,10 @@ const TABS = [
 ] as const;
 
 const FLOATING_MARGIN = 16;
+
+// Liquid Glass only exists on iOS 26+. Older iPhones (and Android) get the
+// flat rail color instead of a see-through bar.
+const HAS_LIQUID_GLASS = Platform.OS === 'ios' && isLiquidGlassAvailable();
 
 export default function AppTabs() {
   const pathname = usePathname();
@@ -76,11 +79,22 @@ export default function AppTabs() {
   );
   const [layoutVersion, setLayoutVersion] = useState(0);
 
+  // One presence check, shared by the gate below and the tab bar. The tabs
+  // only appear once the account's data has actually loaded; until then
+  // (loading, error, nothing linked, still fetching) the reader sees a
+  // single full screen with no way into the other tabs or Profile.
+  const review = useRemoteData(getReview);
+  const showTabs = review.state.status === 'ready' && !review.state.data.presence.isEmpty;
+
   return (
     <Tabs>
-      <TabsGate pathname={pathname} />
+      <TabsGate review={review} />
       <TabList asChild>
-        <BottomBar activeIndex={activeIndex} cellLayoutsRef={cellLayoutsRef} layoutVersion={layoutVersion}>
+        <BottomBar
+          activeIndex={activeIndex}
+          cellLayoutsRef={cellLayoutsRef}
+          layoutVersion={layoutVersion}
+          hidden={!showTabs}>
           {TABS.map((tab, index) => (
             <TabTrigger key={tab.name} name={tab.name} href={tab.href} asChild>
               {/* Icons only now — `label` still named on TABS (and passed
@@ -124,38 +138,19 @@ export default function AppTabs() {
  * oneview's own `NothingYet`/`BuildingReview` exist to prevent on web (see
  * each file's own comment).
  *
- * Profile/Reports/Risk Profile are separate stack screens, not gated
- * here — matching web, where Risk Profile explicitly works "in both the
- * linked and not-linked states" and Profile/Reports show account-level
- * facts that don't depend on any AA data having arrived. More itself is
- * a TAB, not a separate stack screen, and needs its own explicit
- * exemption below for exactly that reason (see the `pathname === '/more'`
- * check) — it's this gate's one deliberate escape hatch, since it's
- * where "Sign out" and "Link accounts" (retry) both live.
+ * Every tab is gated, More included, and the tab bar is hidden while
+ * gated (16 Sep, at the product owner's request): nothing but the link
+ * option — or a spinner while loading — until the account's data has
+ * loaded. Because More (and its Sign out) is unreachable here, every gate
+ * screen carries its own "Sign out" so no one is trapped.
  *
- * A failed presence check (network hiccup, timeout) falls through to the
- * normal tabs rather than blocking on it — each screen already has its own
- * loading/error handling, and a transient check failure here shouldn't be
- * able to hide the whole app behind a spinner.
+ * A failed presence check shows an error with a retry instead of falling
+ * through to the tabs, for the same reason: no dashboard until the data
+ * is known to be there.
  */
-function TabsGate({ pathname }: { pathname: string }) {
-  const { state, refreshing, refresh } = useRemoteData(getReview);
+function TabsGate({ review }: { review: ReturnType<typeof useRemoteData<ReviewPayload>> }) {
+  const { state, refreshing, refresh, reload } = review;
   const insets = useSafeAreaInsets();
-  // The doc comment above claims More/Profile/Reports/Risk Profile "aren't
-  // gated here" — true for the latter three (separate stack screens this
-  // gate never runs for at all), but False for More itself: it's one of
-  // the five TABS, rendered through this exact same `TabSlot`, so it was
-  // being intercepted by the checks below identically to Performance/
-  // Segments/MF X-Ray/Holdings. That's a real dead end, not just an
-  // inconsistency: More is where "Sign out" and "Link accounts" (retry)
-  // both live, and a customer who backed out of `/link` mid-journey (its
-  // own "Close" button, or the OS back gesture) landed straight on
-  // whichever of NothingYet/BuildingReview matched their state with
-  // NO WAY OUT of it at all — reported 16 Sep, "I am stuck." Exempting
-  // `/more` here is what actually makes the doc comment's claim true.
-  if (pathname === '/more') {
-    return <TabSlot style={{ height: '100%' }} />;
-  }
 
   if (state.status === 'loading') {
     return (
@@ -165,7 +160,18 @@ function TabsGate({ pathname }: { pathname: string }) {
     );
   }
 
-  if (state.status === 'ready' && state.data.presence.isEmpty) {
+  if (state.status === 'error') {
+    return (
+      <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={{ flex: 1 }}>
+        <SafeAreaView style={{ flex: 1 }}>
+          <ErrorView message={state.message} onRetry={reload} />
+          <GateSignOut />
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
+
+  if (state.data.presence.isEmpty) {
     // A consent that exists but hasn't delivered yet is mid-fetch, not
     // "never linked" — showing NothingYet's `hasConsent: true` branch there
     // ("your accounts reported no holdings, link another account") was the
@@ -186,6 +192,7 @@ function TabsGate({ pathname }: { pathname: string }) {
             contentContainerStyle={styles.gateScroll}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
             <BuildingReview building={state.data.building} />
+            <GateSignOut />
           </ScrollView>
         </LinearGradient>
       );
@@ -196,6 +203,7 @@ function TabsGate({ pathname }: { pathname: string }) {
           contentContainerStyle={styles.gateScroll}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
           <NothingYet presence={state.data.presence} />
+          <GateSignOut />
         </ScrollView>
       </LinearGradient>
     );
@@ -210,6 +218,27 @@ function TabsGate({ pathname }: { pathname: string }) {
         </View>
       ) : null}
     </View>
+  );
+}
+
+/** The gate screens' own way out — More (and its Sign out) is hidden here. */
+function GateSignOut() {
+  const { signOut } = useAuth();
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  return (
+    <SafeAreaView edges={['bottom']} style={styles.gateSignOutWrap}>
+      <Pressable
+        accessibilityRole="button"
+        disabled={busy}
+        hitSlop={12}
+        onPress={() => {
+          setBusy(true);
+          void signOut().finally(() => router.replace('/login'));
+        }}>
+        <Text style={styles.gateSignOut}>{busy ? 'Signing out…' : 'Sign out'}</Text>
+      </Pressable>
+    </SafeAreaView>
   );
 }
 
@@ -257,11 +286,15 @@ function BottomBar({
   activeIndex,
   cellLayoutsRef,
   layoutVersion,
+  hidden,
 }: {
   children?: React.ReactNode;
   activeIndex: number;
   cellLayoutsRef: React.RefObject<({ x: number; y: number; width: number; height: number } | null)[]>;
   layoutVersion: number;
+  /** Hidden with `display: 'none'` rather than unmounted: the `TabTrigger`s
+   * inside must stay mounted for expo-router/ui to keep the tab routes. */
+  hidden: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const indicatorX = useSharedValue(0);
@@ -321,7 +354,12 @@ function BottomBar({
     <GlassView
       glassEffectStyle="regular"
       tintColor={QodeColor.greenDeep}
-      style={[styles.bar, Platform.OS !== 'ios' && styles.barFallback, { bottom: insets.bottom + FLOATING_MARGIN }]}>
+      style={[
+        styles.bar,
+        !HAS_LIQUID_GLASS && styles.barFallback,
+        { bottom: insets.bottom + FLOATING_MARGIN },
+        hidden && styles.barHidden,
+      ]}>
       <View style={styles.row}>
         <Animated.View pointerEvents="none" style={indicatorStyle} />
         {children}
@@ -338,6 +376,19 @@ const styles = StyleSheet.create({
   // register, which a fixed `flex: 1` on the content container can starve.
   gateScroll: {
     flexGrow: 1,
+  },
+  gateSignOutWrap: {
+    alignItems: 'center',
+    paddingVertical: QodeSpace[5],
+  },
+  gateSignOut: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 14,
+    color: QodeColor.textMuted,
+    textDecorationLine: 'underline',
+  },
+  barHidden: {
+    display: 'none',
   },
   demoBadge: {
     position: 'absolute',
@@ -376,9 +427,8 @@ const styles = StyleSheet.create({
     }),
   },
   barFallback: {
-    // GlassView is a plain View outside iOS — give it the flat rail
-    // background the bar always had, since there's no glass tint to fall
-    // back on.
+    // Wherever Liquid Glass isn't available (Android, iOS before 26),
+    // give the bar the flat rail background, since there's no glass tint.
     backgroundColor: QodeColor.railBg,
   },
   row: {

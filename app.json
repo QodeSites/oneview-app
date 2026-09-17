@@ -7,7 +7,13 @@
     "icon": "./assets/images/icon.png",
     "scheme": "mobileapp",
     "userInterfaceStyle": "automatic",
-    "ios": {},
+    "ios": {
+      "bundleIdentifier": "com.qodeinvest.oneview",
+      "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      }
+    },
     "android": {
       "package": "com.qodeinvest.oneview",
       "adaptiveIcon": {

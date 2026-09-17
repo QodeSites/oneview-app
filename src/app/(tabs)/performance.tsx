@@ -15,7 +15,8 @@ import { useRemoteData } from '@/hooks/use-remote-data';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { money, signedPct } from '@/lib/format';
 import { type CapBand } from '@/lib/mock-data';
-import { getPerformance } from '@/lib/reviewApi';
+import { getPerformance, getRiskProfileData } from '@/lib/reviewApi';
+import { calculateScores } from '@/lib/strategy-scoring';
 
 /**
  * Performance & Overview, merged into one screen exactly like
@@ -74,6 +75,11 @@ const RECOMMENDED_BLEND = [
 
 export default function PerformanceScreen() {
   const { state, refreshing, refresh } = useRemoteData(getPerformance);
+  // The saved Risk Profile answers, for the mix card's second view — web
+  // gets them as a page prop (`savedAnswers`); `/api/mobile/performance`
+  // doesn't carry them, so they come from the Risk Profile route instead.
+  const riskProfile = useRemoteData(getRiskProfileData);
+  const [mixView, setMixView] = useState<'yours' | 'risk'>('yours');
   const [openBand, setOpenBand] = useState<CapBand | null>(null);
   const tabBarHeight = useTabBarHeight();
 
@@ -117,7 +123,19 @@ export default function PerformanceScreen() {
     yoursTotal > 0
       ? RECOMMENDED_BLEND.map((b) => ({ ...b, percent: Number(((yoursRaw[b.code] / yoursTotal) * 100).toFixed(1)) }))
       : null;
-  const shownBlend = yourBlend ?? RECOMMENDED_BLEND;
+  // Ported from Performance.tsx's `riskBlend`: the saved answers' allocation
+  // on the same three sleeves. Null until all six are answered.
+  const savedAnswers = riskProfile.state.status === 'ready' ? riskProfile.state.data : null;
+  const riskBlend =
+    savedAnswers && savedAnswers.length === 6
+      ? (() => {
+          const byCode = new Map(calculateScores(savedAnswers).map((r) => [r.code, r.allocation]));
+          return RECOMMENDED_BLEND.map((b) => ({ ...b, percent: byCode.get(b.code) ?? 0 }));
+        })()
+      : null;
+  // Falls back to "yours" if the answers disappear while the risk view is open.
+  const showRisk = mixView === 'risk' && riskBlend !== null;
+  const shownBlend = showRisk ? riskBlend : (yourBlend ?? RECOMMENDED_BLEND);
 
   return (
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
@@ -125,7 +143,16 @@ export default function PerformanceScreen() {
         <ScrollView
           contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + QodeSpace[3] }]}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                refresh();
+                riskProfile.revalidate();
+              }}
+              tintColor={QodeColor.accent}
+            />
+          }>
           <PageHeader
             title="Performance"
             subtitle="What a year did to your portfolio, and what it is made of."
@@ -294,26 +321,47 @@ export default function PerformanceScreen() {
                 </View>
               </View>
 
-              {/* ── Your mix, on the same three strategies ──
-                  Was wrongly dropped as unbuildable — see the component doc
-                  comment. Only the default "yours" view (web's own default);
-                  the alternate "risk profile" tab needs `calculateScores()`
-                  ported too, a separate risk-scoring algorithm, not added
-                  here. */}
+              {/* ── Your mix / Your risk profile, on the same three strategies ──
+                  Two views, as on web (Performance.tsx's `mixView`): the
+                  reader's own cap split, or the split their saved Risk
+                  Profile answers recommend. With no saved answers, the
+                  second chip is a link to the Risk Profile screen instead. */}
               <View style={styles.card}>
-                <Text style={styles.cardTitle}>Your mix, on the same three strategies</Text>
-                {/* Web's `rv-chip` link to `/review/risk-profile`. Web turns
-                    this into a view toggle once answers are saved; that
-                    second view isn't ported, so mobile always links. */}
-                <Link href="/risk-profile" asChild>
-                  <Pressable style={styles.riskChip}>
-                    <Text style={styles.riskChipText}>Your risk profile →</Text>
+                <Text style={styles.cardTitle}>
+                  {showRisk ? 'Your risk profile, on the same three strategies' : 'Your mix, on the same three strategies'}
+                </Text>
+                <View style={styles.mixChips}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: !showRisk }}
+                    onPress={() => setMixView('yours')}
+                    style={[styles.mixChip, !showRisk && styles.mixChipOn]}>
+                    <Text style={[styles.mixChipText, !showRisk && styles.mixChipTextOn]}>Your mix</Text>
                   </Pressable>
-                </Link>
+                  {riskBlend ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: showRisk }}
+                      onPress={() => setMixView('risk')}
+                      style={[styles.mixChip, showRisk && styles.mixChipOn]}>
+                      <Text style={[styles.mixChipText, showRisk && styles.mixChipTextOn]}>Your risk profile</Text>
+                    </Pressable>
+                  ) : (
+                    <Link href="/risk-profile" asChild>
+                      <Pressable style={styles.mixChip}>
+                        <Text style={styles.mixChipText}>Your risk profile →</Text>
+                      </Pressable>
+                    </Link>
+                  )}
+                </View>
                 <Text style={styles.cardCaption}>
-                  {yourBlend
-                    ? 'Straight from your own Segment Analysis donut, mapped onto Qode’s three strategies — Large Cap → Qode All Weather, Mid Cap → Qode Tactical Fund, Small Cap → Qode Growth Fund. Others has no equity strategy, so it is left out and the three shares are re-scaled to total 100%.'
-                    : 'A fixed model mix of Qode’s strategies, computed daily and rebased to 100 on the same day as every other line. It is what that mix did over this window — not a portfolio tailored to you, and not advice.'}
+                  {showRisk
+                    ? `The mix your saved Risk Profile answers recommend — ${shownBlend
+                        .map((s) => `${s.name} ${s.percent}%`)
+                        .join(', ')}. Edit the answers on the Risk Profile page and this view follows.`
+                    : yourBlend
+                      ? 'Straight from your own Segment Analysis donut, mapped onto Qode’s three strategies — Large Cap → Qode All Weather, Mid Cap → Qode Tactical Fund, Small Cap → Qode Growth Fund. Others has no equity strategy, so it is left out and the three shares are re-scaled to total 100%.'
+                      : 'A fixed model mix of Qode’s strategies, computed daily and rebased to 100 on the same day as every other line. It is what that mix did over this window — not a portfolio tailored to you, and not advice.'}
                 </Text>
                 {/* `alignItems: 'center'`, not the shared `donutRow`'s own
                     `flex-start` (fine for the allocation card below, where
@@ -333,7 +381,7 @@ export default function PerformanceScreen() {
                         <View style={styles.blendHead}>
                           <View style={[styles.legendSwatch, { backgroundColor: StrategyColor[b.code] }]} />
                           <Text style={styles.legendLabel}>{b.name}</Text>
-                          <Text style={styles.blendPercent}>{b.percent.toFixed(1)}%</Text>
+                          <Text style={styles.blendPercent}>{b.percent}%</Text>
                         </View>
                         <Text style={styles.blendRole}>{b.role}</Text>
                       </View>
@@ -624,19 +672,30 @@ const styles = StyleSheet.create({
     color: QodeColor.accent,
     marginTop: QodeSpace[2],
   },
-  riskChip: {
-    alignSelf: 'flex-start',
+  mixChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: QodeSpace[2],
+    marginTop: QodeSpace[3],
+  },
+  mixChip: {
     borderWidth: 1,
     borderColor: QodeColor.controlBorder,
     borderRadius: QodeRadius.pill,
     paddingHorizontal: QodeSpace[4],
     paddingVertical: QodeSpace[2],
-    marginTop: QodeSpace[3],
   },
-  riskChipText: {
+  // Gold border + gold text for the selected view, as web's chip does.
+  mixChipOn: {
+    borderColor: QodeColor.accent,
+  },
+  mixChipText: {
     fontFamily: QodeFont.ui,
     fontSize: 13,
     color: QodeColor.textPrimary,
+  },
+  mixChipTextOn: {
+    color: QodeColor.accent,
   },
   coverageNote: {
     fontFamily: QodeFont.uiRegular,

@@ -34,13 +34,9 @@ type Step = 'phone' | 'otp' | 'no-account';
  *
  * Real qode-oneview backend now (src/lib/api.ts) — `POST /api/auth/send`
  * genuinely texts a code via 2Factor, `/verify` genuinely checks it against
- * the real database and says whether the number has an account. Note this
- * means: qode-oneview's own `normalisePhone` only accepts a 10-digit Indian
- * mobile number, so PhoneEntryForm's worldwide country picker will get a
- * real "Enter a 10-digit Indian mobile number" error back from the server
- * for anywhere else — shown as-is (see `sendError` below) rather than
- * papered over, since that is a real, current constraint of the backend,
- * not a bug in this screen.
+ * the real database and says whether the number has an account.
+ * qode-oneview's own `normalisePhone` only accepts a 10-digit Indian mobile
+ * number, which is why PhoneEntryForm takes only that, with no country code.
  *
  * The brand mark, step dots and trust badges are chrome around that same
  * state machine — see qode-oneview's own login page (src/app/login/
@@ -220,7 +216,8 @@ export default function LoginScreen() {
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           contentContainerStyle={[styles.scroll, { minHeight: screenHeight }]}
-          keyboardShouldPersistTaps="handled">
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag">
           <SafeAreaView edges={['top', 'bottom']} style={styles.safe}>
             <Animated.View
               style={[

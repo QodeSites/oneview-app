@@ -64,7 +64,13 @@ export default function ReportsScreen() {
       const fileUri = `${FileSystem.cacheDirectory}qode-review.pdf`;
       await FileSystem.writeAsStringAsync(fileUri, result.base64, { encoding: 'base64' });
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, { mimeType: 'application/pdf', dialogTitle: 'Save or share your review' });
+        // `UTI` is iOS's own file-type tag; without it the iOS share sheet
+        // may not offer PDF-specific actions like "Save to Files".
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/pdf',
+          UTI: 'com.adobe.pdf',
+          dialogTitle: 'Save or share your review',
+        });
       } else {
         setDownloadError('Downloaded, but this device has no way to save or share it.');
       }

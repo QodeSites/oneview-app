@@ -174,7 +174,12 @@ export default function LinkAccountsScreen() {
     // `ready` so a LATER, legitimate bounce through `/login` deep in the
     // real journey is never mistaken for the handoff timing out (see this
     // file's top comment, bug 1).
-    if (phase === 'loading' && /\/link(?:[/?]|$)/.test(nav.url) && !/\/login(\?|$)/.test(nav.url)) {
+    // `!nav.loading`: only once `/link` has finished loading. `/link`
+    // redirects an already-consented account on to `/review`, and the
+    // WebView reports `/link` for a moment on the way — counting that as
+    // the journey starting made the `/review` that followed look like a
+    // finished journey and sent the reader to Performance (17 Sep).
+    if (phase === 'loading' && !nav.loading && /\/link(?:[/?]|$)/.test(nav.url) && !/\/login(\?|$)/.test(nav.url)) {
       setPhase('ready');
       return;
     }

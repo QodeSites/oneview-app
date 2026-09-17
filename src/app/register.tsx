@@ -79,7 +79,7 @@ export default function RegisterScreen() {
   return (
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <SafeAreaView edges={['top', 'bottom']}>
             <View style={styles.headerRow}>
               <Pressable accessibilityRole="button" hitSlop={12} onPress={() => router.replace('/login')}>
@@ -104,6 +104,8 @@ export default function RegisterScreen() {
               value={name}
               onChangeText={(v) => setName(v.replace(/[^\p{L}\s'.-]/gu, ''))}
               maxLength={120}
+              autoComplete="name"
+              textContentType="name"
               autoFocus
             />
 
@@ -114,6 +116,8 @@ export default function RegisterScreen() {
               placeholderTextColor={QodeColor.textMuted}
               keyboardType="email-address"
               autoCapitalize="none"
+              autoComplete="email"
+              textContentType="emailAddress"
               value={email}
               onChangeText={(v) => setEmail(v.trim())}
               maxLength={254}

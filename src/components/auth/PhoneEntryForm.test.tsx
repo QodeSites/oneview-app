@@ -3,11 +3,8 @@ import { jest } from '@jest/globals';
 
 import { PhoneEntryForm } from './PhoneEntryForm';
 
-// The country code is a separate picker (CountryCodePicker) defaulting to
-// India (+91); this field validates the national number typed alongside
-// it against THAT country's own numbering plan (phoneLengthFor in
-// data/countries.ts) — India is a fixed 10 digits (plus the real 6-9
-// leading-digit rule), not a flat "any length" worldwide guess.
+// Indian mobile numbers only, with no country code shown: 10 digits,
+// starting 6-9 (the backend's own rule), submitted with "+91" attached.
 //
 // RNTL v14: render() and fireEvent.* are async by default and must be
 // awaited before the updated tree is queryable — see callstack's v14
@@ -15,10 +12,11 @@ import { PhoneEntryForm } from './PhoneEntryForm';
 describe('PhoneEntryForm', () => {
   const PLACEHOLDER = /^phone number$/i;
 
-  it('renders a phone input, the default country code, and a submit button', async () => {
+  it('renders just a phone input and a submit button, with no country code picker', async () => {
     await render(<PhoneEntryForm onSubmit={jest.fn()} />);
     expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeTruthy();
-    expect(screen.getByText('+91')).toBeTruthy();
+    expect(screen.queryByText('+91')).toBeNull();
+    expect(screen.queryByRole('button', { name: /country code/i })).toBeNull();
     expect(screen.getByRole('button', { name: /send code/i })).toBeTruthy();
   });
 
@@ -27,16 +25,15 @@ describe('PhoneEntryForm', () => {
     expect(screen.getByRole('button', { name: /send code/i })).toBeDisabled();
   });
 
-  it('disables submit for a 6-digit number with India selected (the reported bug: it used to let 6 digits through)', async () => {
+  it('disables submit for a 6-digit number', async () => {
     await render(<PhoneEntryForm onSubmit={jest.fn()} />);
     await fireEvent.changeText(screen.getByPlaceholderText(PLACEHOLDER), '932404');
     expect(screen.getByRole('button', { name: /send code/i })).toBeDisabled();
   });
 
-  it('disables submit for an 11-digit number with India selected (India is fixed at 10)', async () => {
+  it('caps the field at 10 digits', async () => {
     await render(<PhoneEntryForm onSubmit={jest.fn()} />);
-    await fireEvent.changeText(screen.getByPlaceholderText(PLACEHOLDER), '98765432101');
-    expect(screen.getByRole('button', { name: /send code/i })).toBeDisabled();
+    expect(screen.getByPlaceholderText(PLACEHOLDER).props.maxLength).toBe(10);
   });
 
   it('disables submit for a 10-digit number with an invalid Indian leading digit', async () => {
@@ -45,7 +42,7 @@ describe('PhoneEntryForm', () => {
     expect(screen.getByRole('button', { name: /send code/i })).toBeDisabled();
   });
 
-  it('enables submit for a valid 10-digit Indian number and calls onSubmit with the country code attached', async () => {
+  it('enables submit for a valid 10-digit Indian number and calls onSubmit with +91 attached', async () => {
     const onSubmit = jest.fn();
     await render(<PhoneEntryForm onSubmit={onSubmit} />);
 
@@ -64,35 +61,6 @@ describe('PhoneEntryForm', () => {
     await fireEvent.changeText(screen.getByPlaceholderText(PLACEHOLDER), '98765-43210');
     await fireEvent.press(screen.getByRole('button', { name: /send code/i }));
     expect(onSubmit).toHaveBeenCalledWith('+919876543210');
-  });
-
-  it('validates against the newly selected country once one is picked, not the old one', async () => {
-    const onSubmit = jest.fn();
-    await render(<PhoneEntryForm onSubmit={onSubmit} />);
-
-    await fireEvent.press(screen.getByRole('button', { name: /country code/i }));
-    await fireEvent.changeText(screen.getByPlaceholderText(/search country or code/i), 'United States');
-    await fireEvent.press(screen.getByText('United States'));
-
-    // A 6-digit number is invalid for the US too (fixed at 10) — this
-    // isn't just "India rejects it", the whole point is per-country rules.
-    await fireEvent.changeText(screen.getByPlaceholderText(PLACEHOLDER), '415555');
-    expect(screen.getByRole('button', { name: /send code/i })).toBeDisabled();
-
-    await fireEvent.changeText(screen.getByPlaceholderText(PLACEHOLDER), '(415) 555-0132');
-    await fireEvent.press(screen.getByRole('button', { name: /send code/i }));
-    expect(onSubmit).toHaveBeenCalledWith('+14155550132');
-  });
-
-  it('clears the field when the country is switched, rather than keeping a now-invalid value', async () => {
-    await render(<PhoneEntryForm onSubmit={jest.fn()} />);
-    await fireEvent.changeText(screen.getByPlaceholderText(PLACEHOLDER), '9876543210');
-
-    await fireEvent.press(screen.getByRole('button', { name: /country code/i }));
-    await fireEvent.changeText(screen.getByPlaceholderText(/search country or code/i), 'United States');
-    await fireEvent.press(screen.getByText('United States'));
-
-    expect(screen.getByPlaceholderText(PLACEHOLDER).props.value).toBe('');
   });
 
   it('shows an inline error naming the expected length for an invalid, non-empty number', async () => {

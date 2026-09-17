@@ -302,7 +302,16 @@ function HoldingRow({ holding: h, open, onToggle }: { holding: Holding; open: bo
             {h.name}
           </Text>
           <View style={styles.rowMetaLine}>
-            <CapPill cap={h.cap} />
+            {/* A fund has no cap band of its own (web leaves the cell
+                blank), which showed as an empty box here — label it as a
+                mutual fund instead. */}
+            {h.type === 'mf' ? (
+              <View style={[styles.capPill, styles.mfPill]}>
+                <Text style={styles.capPillText}>MF</Text>
+              </View>
+            ) : (
+              <CapPill cap={h.cap} />
+            )}
             <Text style={styles.rowMeta}>{h.weightPercent.toFixed(2)}% of portfolio</Text>
           </View>
         </View>
@@ -517,6 +526,10 @@ const styles = StyleSheet.create({
     fontFamily: QodeFont.uiRegular,
     fontSize: 10.5,
     color: QodeColor.textMuted,
+  },
+  // Sky, not a cap-band color, so "MF" can't be mistaken for a band.
+  mfPill: {
+    backgroundColor: QodeColor.sky,
   },
   rowMeta: {
     fontFamily: QodeFont.uiRegular,

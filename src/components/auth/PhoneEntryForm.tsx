@@ -2,12 +2,10 @@ import * as Haptics from 'expo-haptics';
 import { useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { CountryCodePicker, DEFAULT_COUNTRY } from '@/components/auth/CountryCodePicker';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
-import { phoneLengthFor, type Country } from '@/data/countries';
 
 export interface PhoneEntryFormProps {
-  /** Called with the full, normalized international number (e.g. "+14155550132") on a valid submit. */
+  /** Called with the full number, "+91" attached (e.g. "+919876543210"), on a valid submit. */
   onSubmit: (phone: string) => void;
   /** True while the parent is "sending" the code — disables the field and button, swaps the label. */
   busy?: boolean;
@@ -23,25 +21,16 @@ export interface PhoneEntryFormProps {
 }
 
 /**
- * The country code is picked separately (CountryCodePicker), so this only
- * validates the national number typed alongside it — against the
- * SELECTED country's own numbering plan (`phoneLengthFor`), not one
- * flat worldwide rule. A generic "4 to 12 digits, any country" let a
- * 6-digit number through with India selected, which is simply wrong: a
- * real Indian mobile number is 10 digits, always.
- *
- * India additionally gets the real leading-digit rule (6-9) — the same
- * one qode-oneview's own backend enforces (src/lib/otp.ts) — since it's
- * both cheap and the one country most of Qode's customers are actually
- * in; other countries stay length-only rather than encoding every
- * numbering plan's mobile-prefix quirks.
+ * Indian mobile numbers only, typed without a country code (17 Sep, at the
+ * product owner's request — the country picker is gone). qode-oneview's
+ * backend (src/lib/otp.ts) only accepts a 10-digit Indian mobile starting
+ * 6-9, so this enforces the same rule and attaches "+91" on submit.
  */
-function normaliseLocalNumber(raw: string, country: Country): string | null {
+const PHONE_LENGTH = 10;
+
+function normaliseLocalNumber(raw: string): string | null {
   const digits = raw.replace(/\D/g, '');
-  const [min, max] = phoneLengthFor(country.iso2);
-  if (digits.length < min || digits.length > max) return null;
-  if (country.iso2 === 'IN' && !/^[6-9]\d{9}$/.test(digits)) return null;
-  return digits;
+  return /^[6-9]\d{9}$/.test(digits) ? digits : null;
 }
 
 /**
@@ -52,15 +41,12 @@ function normaliseLocalNumber(raw: string, country: Country): string | null {
  * gold is allowed.
  */
 export function PhoneEntryForm({ onSubmit, busy = false, cooldownLabel = null }: PhoneEntryFormProps) {
-  const [country, setCountry] = useState<Country>(DEFAULT_COUNTRY);
   const [value, setValue] = useState('');
   const [focused, setFocused] = useState(false);
-  const [minLength, maxLength] = phoneLengthFor(country.iso2);
-  const localDigits = normaliseLocalNumber(value, country);
+  const localDigits = normaliseLocalNumber(value);
   const isValid = localDigits !== null;
   const showError = value.length > 0 && !isValid;
   const disabled = !isValid || busy || !!cooldownLabel;
-  const lengthHint = minLength === maxLength ? `${minLength}-digit` : `${minLength}-${maxLength} digit`;
 
   /**
    * Core RN `Animated`, not Reanimated — deliberately (see OtpEntryForm's
@@ -71,36 +57,24 @@ export function PhoneEntryForm({ onSubmit, busy = false, cooldownLabel = null }:
 
   return (
     <View style={styles.container}>
-      <View style={styles.row}>
-        <CountryCodePicker
-          value={country}
-          onChange={(c) => {
-            setCountry(c);
-            // A number valid for the old country is almost never valid
-            // for the new one (different length, different rules) — start
-            // clean rather than leave a stale, silently-wrong value sitting
-            // in the field, or truncate it against the new max length.
-            setValue('');
-          }}
-        />
-        <TextInput
-          style={[styles.input, focused && styles.inputFocused]}
-          placeholder="Phone number"
-          placeholderTextColor={QodeColor.textMuted}
-          keyboardType="phone-pad"
-          autoComplete="tel"
-          value={value}
-          // Filtered as it's typed, not just validated after the fact —
-          // a pasted or hardware-keyboard-typed letter should never sit
-          // in a phone field even for a moment.
-          onChangeText={(v) => setValue(v.replace(/\D/g, ''))}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          maxLength={maxLength}
-          editable={!busy}
-        />
-      </View>
-      {showError ? <Text style={styles.error}>Enter a valid {lengthHint} phone number.</Text> : null}
+      <TextInput
+        style={[styles.input, focused && styles.inputFocused]}
+        placeholder="Phone number"
+        placeholderTextColor={QodeColor.textMuted}
+        keyboardType="phone-pad"
+        autoComplete="tel"
+        textContentType="telephoneNumber"
+        value={value}
+        // Filtered as it's typed, not just validated after the fact — a
+        // pasted or hardware-keyboard-typed letter should never sit in a
+        // phone field even for a moment.
+        onChangeText={(v) => setValue(v.replace(/\D/g, ''))}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        maxLength={PHONE_LENGTH}
+        editable={!busy}
+      />
+      {showError ? <Text style={styles.error}>Enter a valid {PHONE_LENGTH}-digit phone number.</Text> : null}
       <Pressable
         accessibilityRole="button"
         disabled={disabled}
@@ -114,7 +88,7 @@ export function PhoneEntryForm({ onSubmit, busy = false, cooldownLabel = null }:
         onPress={() => {
           if (!localDigits) return;
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-          onSubmit(`+${country.dialCode}${localDigits}`);
+          onSubmit(`+91${localDigits}`);
         }}>
         <Animated.View
           style={[styles.button, disabled && styles.buttonDisabled, { transform: [{ scale: buttonScale }] }]}>
@@ -129,21 +103,7 @@ const styles = StyleSheet.create({
   container: {
     gap: QodeSpace[4],
   },
-  row: {
-    flexDirection: 'row',
-    gap: QodeSpace[2],
-  },
   input: {
-    flex: 1,
-    // Without this, React Native Web renders `flex: 1` with the browser's
-    // own implicit `min-width: auto` on flex items — a TextInput then
-    // refuses to shrink below its unconstrained/placeholder content width,
-    // so on a narrow screen the row (this + the country picker) overflows
-    // the screen's own padding instead of this field giving up space
-    // first, pushing its rounded edge past the visible screen (reported at
-    // 375px width, 15 Sep). Native iOS/Android don't share this quirk —
-    // Yoga has no such default — so it only ever showed on web.
-    minWidth: 0,
     backgroundColor: QodeColor.surface,
     borderWidth: 1,
     borderColor: QodeColor.controlBorder,
