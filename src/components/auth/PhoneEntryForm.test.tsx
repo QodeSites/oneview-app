@@ -27,7 +27,7 @@ describe('PhoneEntryForm', () => {
 
   it('disables submit for a 6-digit number', async () => {
     await render(<PhoneEntryForm onSubmit={jest.fn()} />);
-    await fireEvent.changeText(screen.getByPlaceholderText(PLACEHOLDER), '932404');
+    await fireEvent.changeText(screen.getByPlaceholderText(PLACEHOLDER), '987654');
     expect(screen.getByRole('button', { name: /send code/i })).toBeDisabled();
   });
 

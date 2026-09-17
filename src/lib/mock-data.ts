@@ -566,8 +566,8 @@ export const mockReviewData: ReviewData = {
 
   profile: {
     name: 'Aarav Mehta',
-    phone: '9324042685',
-    custId: '9324042685@finvu',
+    phone: '9876543210',
+    custId: '9876543210@finvu',
     panMasked: 'XXXXX4821F',
     email: 'aarav.mehta@example.com',
     memberSince: '2025-11-12',
