@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
+import { isReviewPhone } from '@/constants/review-account';
 import { logout as apiLogout } from '@/lib/api';
 import { setDemoActive } from '@/lib/demo';
 import { subscribeSessionExpired } from '@/lib/session-events';
@@ -115,9 +116,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       async signIn(phone: string) {
         expiredHandledRef.current = false;
+        // The store-review account (constants/review-account.ts) has a real
+        // server session but no portfolio, so it reads the demo data
+        // instead of an empty dashboard.
+        const demo = isReviewPhone(phone);
         await setStorageItem(SESSION_KEY, phone);
-        setDemoActive(false);
-        setSession({ phone });
+        if (demo) await setStorageItem(DEMO_KEY, '1');
+        else await deleteStorageItem(DEMO_KEY);
+        setDemoActive(demo);
+        setSession(demo ? { phone, demo } : { phone });
       },
       async signInDemo() {
         expiredHandledRef.current = false;
@@ -130,9 +137,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Real call to `POST /api/auth/logout` (src/lib/api.ts), clearing
         // the actual session cookie server-side — best-effort, since the
         // local session below is cleared regardless of whether it succeeds.
-        // Skipped for a demo session: there is no real server-side session
-        // to clear, and it never had one to begin with.
-        if (!session?.demo) await apiLogout();
+        // Skipped for the dev-only "View demo" session (phone 'demo'): there
+        // is no real server-side session to clear. The review account shows
+        // demo data too, but it did sign in for real, so it still logs out.
+        if (session?.phone !== 'demo') await apiLogout();
         await deleteStorageItem(SESSION_KEY);
         await deleteStorageItem(DEMO_KEY);
         setDemoActive(false);

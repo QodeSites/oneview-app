@@ -2,13 +2,25 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { Link, useRouter } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ProfileDetailsCard } from '@/components/ProfileDetailsCard';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { useRemoteData } from '@/hooks/use-remote-data';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
+import { useAppLock } from '@/lib/app-lock';
+import { installedVersion } from '@/lib/app-update';
 import { useAuth } from '@/lib/auth';
 import { getProfileData } from '@/lib/reviewApi';
 
@@ -67,6 +79,8 @@ export default function MoreScreen() {
             </View>
           )}
 
+          <SecuritySection />
+
           <View style={styles.list}>
             {ITEMS.map((item, i) => (
               <Link key={item.href} href={item.href} asChild>
@@ -81,6 +95,7 @@ export default function MoreScreen() {
               </Link>
             ))}
           </View>
+          {installedVersion() ? <Text style={styles.version}>Version {installedVersion()}</Text> : null}
         </ScrollView>
 
         <View style={[styles.signOutBar, { paddingBottom: tabBarHeight + QodeSpace[3] }]}>
@@ -104,6 +119,52 @@ export default function MoreScreen() {
         </View>
       </SafeAreaView>
     </LinearGradient>
+  );
+}
+
+/**
+ * Face ID / fingerprint app lock (src/lib/app-lock.tsx). Hidden on devices
+ * with no enrolled biometrics — unless the lock is already on, so it can
+ * always be turned back off.
+ */
+function SecuritySection() {
+  const { support, enabled, setEnabled } = useAppLock();
+  const [busy, setBusy] = useState(false);
+
+  if (!support || (!support.available && !enabled)) return null;
+
+  return (
+    <View style={styles.list}>
+      <View style={styles.row}>
+        <View style={styles.rowText}>
+          <Text style={styles.rowLabel}>{support.label} lock</Text>
+          <Text style={styles.rowHint}>Ask for {support.label} when you open the app.</Text>
+        </View>
+        <Switch
+          accessibilityLabel={`${support.label} lock`}
+          value={enabled}
+          disabled={busy}
+          trackColor={{ false: QodeColor.surfaceRaised, true: QodeColor.accent }}
+          thumbColor={QodeColor.cream}
+          ios_backgroundColor={QodeColor.surfaceRaised}
+          onValueChange={(value) => {
+            setBusy(true);
+            void setEnabled(value)
+              .then((ok) => {
+                if (ok) {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                } else if (value && !support.available) {
+                  Alert.alert(
+                    `${support.label} isn't set up`,
+                    `Add a ${support.kind === 'face' ? 'face' : 'fingerprint'} in your phone's settings first.`,
+                  );
+                }
+              })
+              .finally(() => setBusy(false));
+          }}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -166,6 +227,22 @@ const styles = StyleSheet.create({
   rowDivider: {
     borderTopWidth: 1,
     borderTopColor: QodeColor.divider,
+  },
+  rowText: {
+    flex: 1,
+    gap: 2,
+    paddingRight: QodeSpace[3],
+  },
+  rowHint: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 13,
+    color: QodeColor.textMuted,
+  },
+  version: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 12,
+    color: QodeColor.faint,
+    textAlign: 'center',
   },
   rowLabel: {
     fontFamily: QodeFont.uiRegular,

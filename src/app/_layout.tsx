@@ -13,7 +13,11 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { LockScreen } from '@/components/LockScreen';
+import { UpdatePrompt } from '@/components/UpdatePrompt';
 import { QodeColor } from '@/constants/qode-theme';
+import { useAppAnalytics } from '@/lib/analytics';
+import { AppLockProvider } from '@/lib/app-lock';
 import { AuthProvider } from '@/lib/auth';
 
 SplashScreen.preventAutoHideAsync();
@@ -68,22 +72,35 @@ export default function RootLayout() {
     // native touch arbitration.
     <GestureHandlerRootView style={styles.root}>
       <AuthProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <AnimatedSplashOverlay />
-          {/* Light icons/text — every screen's background is the dark Curtain
-              gradient, on both platforms, always (not conditioned on
-              colorScheme: the app doesn't have a light theme). */}
-          <StatusBar style="light" />
-          {/* Inside AuthProvider, not outside it — a screen crashing and
-              recovering via "Try again" (ErrorBoundary.tsx) should not also
-              cost the reader their session. */}
-          <ErrorBoundary>
-            <Stack screenOptions={{ headerShown: false }} />
-          </ErrorBoundary>
-        </ThemeProvider>
+        <AppLockProvider>
+          <AppAnalytics />
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <AnimatedSplashOverlay />
+            {/* Light icons/text — every screen's background is the dark Curtain
+                gradient, on both platforms, always (not conditioned on
+                colorScheme: the app doesn't have a light theme). */}
+            <StatusBar style="light" />
+            {/* Inside AuthProvider, not outside it — a screen crashing and
+                recovering via "Try again" (ErrorBoundary.tsx) should not also
+                cost the reader their session. */}
+            <ErrorBoundary>
+              <Stack screenOptions={{ headerShown: false }} />
+            </ErrorBoundary>
+            {/* Above every screen: the Face ID / fingerprint lock, then the
+                new-release prompt (which waits while the lock is up). */}
+            <LockScreen />
+            <UpdatePrompt />
+          </ThemeProvider>
+        </AppLockProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );
+}
+
+/** Install / app-open analytics (src/lib/analytics.ts), mounted once. */
+function AppAnalytics() {
+  useAppAnalytics();
+  return null;
 }
 
 const styles = StyleSheet.create({
