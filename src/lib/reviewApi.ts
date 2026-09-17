@@ -73,8 +73,23 @@ export interface PerformancePayload {
   mix: Series[] | null;
   /** `qode-oneview`'s real `WealthGap` — confirmed field-for-field identical to mock-data.ts's own `WealthGap` type by reading the source directly. */
   gap: WealthGap | null;
-  /** True while the engine is still computing this customer's first analysis — see `review/page.tsx`'s own "Building your review" gate. */
-  calculating: boolean;
+  /**
+   * The same "still building the first analysis" state `/api/mobile/review`
+   * exposes (`AnalysisState`, below) — securities held, and no stored
+   * analysis, a partial one, or one still missing a comparison curve.
+   * `null` is not a real case here (the backend always computes it), kept
+   * only to match `ReviewPayload.analysis`'s own optional shape.
+   *
+   * Was a plain `calculating: boolean` (`!payload && analysisPending`),
+   * which went false the instant ANY stored row existed, partial or not —
+   * so this screen's own "Still building your review" banner disappeared
+   * on the next silent refresh while the allocation donut and totals
+   * underneath, built from that same partial data, stayed on screen
+   * (reported 17 Sep). The screen now gates its ENTIRE dashboard on this
+   * field, the same way `app-tabs.tsx`'s top-level gate does — never a
+   * banner floating over data that isn't ready yet.
+   */
+  analysis: AnalysisState | null;
   savedAnswers: unknown;
   todayValue: number;
   outcome: unknown;
@@ -83,7 +98,8 @@ export interface PerformancePayload {
 
 export interface CapAnalysisPayload {
   data: ReviewData;
-  calculating: boolean;
+  /** See `PerformancePayload.analysis` — same field, same fix (17 Sep). */
+  analysis: AnalysisState | null;
 }
 
 export interface HoldingsPayload {

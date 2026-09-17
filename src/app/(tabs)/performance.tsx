@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AnalysisBuilding } from '@/components/BuildingReview';
 import { Chevron } from '@/components/Chevron';
 import { Donut } from '@/components/charts/Donut';
 import { NavChart } from '@/components/charts/NavChart';
@@ -94,7 +95,33 @@ export default function PerformanceScreen() {
     );
   }
 
-  const { data, mix, gap, calculating } = state.data;
+  const { data, mix, gap, analysis } = state.data;
+
+  // The first analysis isn't done — same gate `app-tabs.tsx`'s top-level
+  // TabsGate already applies before showing any tab at all, kept here too
+  // as a second line of defence: two independent fetches (this screen's
+  // own `useRemoteData(getPerformance)` and the tab gate's `getReview`)
+  // can land a beat apart, and this screen must never show its own
+  // partial totals/donut in that gap (reported 17 Sep: the allocation
+  // donut and total portfolio rendered with a still-building "Still
+  // building your review" banner floating uselessly above them, and the
+  // banner itself disappeared on the next silent refresh while the data
+  // stayed half-built). No dashboard content renders until this is false.
+  if (analysis?.building) {
+    return (
+      <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <ScrollView
+            contentContainerStyle={styles.buildingScroll}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
+            <AnalysisBuilding analysis={analysis} />
+          </ScrollView>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
+
   const classes = data.assetCards.filter((c) => c.value > 0);
 
   // The date range the Journey chart covers — web's own `window` (checked
@@ -158,14 +185,6 @@ export default function PerformanceScreen() {
             subtitle="What a year did to your portfolio, and what it is made of."
             navAsOf={data.client.navAsOf}
           />
-
-          {calculating ? (
-            <View style={styles.calculatingCard}>
-              <Text style={styles.calculatingText}>
-                Still building your review — this can take a few minutes the first time. Pull down to check again.
-              </Text>
-            </View>
-          ) : null}
 
           {/* ── Hero: total portfolio ── */}
           <View style={styles.hero}>
@@ -403,8 +422,20 @@ export default function PerformanceScreen() {
                 <Donut
                   size={150}
                   slices={data.capMix.map((s) => ({ label: s.label, percent: s.percent, color: CapBandColor[s.band] }))}
-                  centerLabel="Portfolio"
-                  centerValue={money(data.totals.portfolio)}
+                  // "Securities", not "Portfolio" — the ring is built from
+                  // stocks, ETFs, InvITs/REITs and mutual funds only
+                  // (qode-oneview's `rebucket()` never touches a bank or
+                  // deposit row), so its 100% is `totals.securities`, not
+                  // `totals.portfolio`. The center used to show the larger,
+                  // whole-account total while the ring itself only ever
+                  // summed to the smaller one — asked "why doesn't Large +
+                  // Mid + Small + Others add up to the number in the
+                  // middle?" (17 Sep), and the honest answer was that the
+                  // middle was showing the wrong total. Web's own version
+                  // of this donut (`Overview.tsx`) shows no center total at
+                  // all, for the same reason.
+                  centerLabel="Securities"
+                  centerValue={money(data.totals.securities)}
                 />
               </View>
               <View style={[styles.legend, styles.legendFull]}>
@@ -498,18 +529,11 @@ const styles = StyleSheet.create({
     paddingTop: QodeSpace[4],
     gap: QodeSpace[4],
   },
-  calculatingCard: {
-    backgroundColor: QodeColor.surfaceRaised,
-    borderWidth: 1,
-    borderColor: QodeColor.accentBorder,
-    borderRadius: QodeRadius.md,
-    padding: QodeSpace[4],
-  },
-  calculatingText: {
-    fontFamily: QodeFont.uiRegular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: QodeColor.textSecondary,
+  // Same as `app-tabs.tsx`'s own `gateScroll`: lets the loader center
+  // vertically on a tall screen while a short one still scrolls, so the
+  // pull-to-refresh gesture always has somewhere to register.
+  buildingScroll: {
+    flexGrow: 1,
   },
   hero: { paddingVertical: QodeSpace[4] },
   heroLabel: {

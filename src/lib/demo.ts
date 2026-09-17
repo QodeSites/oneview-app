@@ -61,7 +61,7 @@ export const DEMO_PERFORMANCE_PAYLOAD: PerformancePayload = {
   // question entirely and was never what the chart reads.
   mix: mockReviewData.performance?.journey ?? null,
   gap: mockReviewData.gap,
-  calculating: false,
+  analysis: { building: false, done: 4, total: 4, startedAt: null },
   savedAnswers: null,
   todayValue: mockReviewData.totals.portfolio,
   outcome: null,
@@ -70,7 +70,7 @@ export const DEMO_PERFORMANCE_PAYLOAD: PerformancePayload = {
 
 export const DEMO_CAP_ANALYSIS_PAYLOAD: CapAnalysisPayload = {
   data: mockReviewData,
-  calculating: false,
+  analysis: { building: false, done: 4, total: 4, startedAt: null },
 };
 
 export const DEMO_HOLDINGS_PAYLOAD: HoldingsPayload = {

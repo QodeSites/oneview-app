@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AnalysisBuilding } from '@/components/BuildingReview';
 import { NavChart } from '@/components/charts/NavChart';
 import { PageHeader } from '@/components/PageHeader';
 import { ErrorView, LoadingView } from '@/components/RemoteStateView';
@@ -99,8 +100,33 @@ export default function SegmentsScreen() {
     );
   }
 
+  const { analysis } = state.data;
+
+  // The first analysis isn't done — same gate as Performance and the
+  // top-level tab gate (see `performance.tsx`'s own comment on this):
+  // this screen's own `useRemoteData(getCapAnalysis)` fetch can land a
+  // beat apart from the tab gate's, and must never show its own
+  // half-built cap mix in that gap. Was a plain `calculating` boolean that
+  // went false the moment ANY stored analysis row existed, partial or not
+  // — its inline "Building your cap comparison" notice below then
+  // disagreed with a donut and bands already drawn from that same partial
+  // data (reported 17 Sep, alongside the identical bug on Performance).
+  if (analysis?.building) {
+    return (
+      <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
+        <SafeAreaView style={styles.safeArea} edges={['top']}>
+          <ScrollView
+            contentContainerStyle={styles.buildingScroll}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
+            <AnalysisBuilding analysis={analysis} />
+          </ScrollView>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
+
   const data = state.data.data;
-  const calculating = state.data.calculating;
   const sections = data.capSections;
   const capMix: CapSlice[] = data.capMix ?? [];
   const capContents = data.capContents ?? {};
@@ -188,15 +214,6 @@ export default function SegmentsScreen() {
               </Pressable>
             ) : null}
           </View>
-          {calculating && !isOthers && !hasChart ? (
-            <View style={styles.noticeCard}>
-              <Text style={styles.noticeTitle}>Building your cap comparison</Text>
-              <Text style={styles.noticeBody}>
-                We are measuring this band against the matching Qode strategy and its index. It takes a minute or
-                two and runs on its own.
-              </Text>
-            </View>
-          ) : null}
 
           {section && hasChart ? (
             <View style={styles.card}>
@@ -441,7 +458,11 @@ export default function SegmentsScreen() {
             </View>
           ) : null}
 
-          {section && !hasChart && !calculating ? (
+          {/* A genuinely different case from the building gate above: the
+              overall analysis is done (or we'd never have reached this
+              render), but this one band still has no comparison curve —
+              e.g. nothing held in it. */}
+          {section && !hasChart ? (
             <View style={styles.noticeCard}>
               <Text style={styles.noticeTitle}>Your comparison hasn&apos;t been calculated yet</Text>
               <Text style={styles.noticeBody}>
@@ -570,6 +591,13 @@ function MetricTile({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  // Same as `app-tabs.tsx`'s own `gateScroll` / `performance.tsx`'s
+  // `buildingScroll`: centers the loader on a tall screen, scrolls on a
+  // short one, and always leaves a pull-to-refresh gesture somewhere to
+  // register.
+  buildingScroll: {
+    flexGrow: 1,
   },
   safeArea: {
     flex: 1,
