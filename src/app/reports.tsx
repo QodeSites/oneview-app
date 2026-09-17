@@ -208,7 +208,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: QodeSpace[2],
   },
-  regLine: { flexDirection: 'row', justifyContent: 'space-between', marginTop: QodeSpace[4] },
+  regLine: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    columnGap: QodeSpace[3],
+    marginTop: QodeSpace[4],
+  },
   regEntity: { fontFamily: QodeFont.uiRegular, fontSize: 11, color: QodeColor.textMuted },
   regReg: { fontFamily: QodeFont.uiRegular, fontSize: 11, color: QodeColor.textMuted },
   contactCard: {

@@ -19,7 +19,21 @@ const CAP_LABEL: Record<CapBand, string> = {
   mid: 'Mid',
   small: 'Small',
   micro: 'Micro',
-  unclassified: '—',
+  // A stock with no SEBI band. Web shows a dash; a word reads better than
+  // an empty-looking box on a phone.
+  unclassified: 'Other',
+};
+
+/**
+ * The tag for anything that isn't a stock — those have no cap band of
+ * their own (web leaves the cell blank), which read as an empty box here.
+ * Colours sit outside the cap-band set so a tag can't pass for a band.
+ */
+const TYPE_TAG: Partial<Record<AssetType, { label: string; color: string }>> = {
+  mf: { label: 'MF', color: QodeColor.sky },
+  etf: { label: 'ETF', color: '#67B9AE' },
+  invitReit: { label: 'InvIT/REIT', color: '#C2D583' },
+  deposit: { label: 'Deposit', color: 'rgba(239, 236, 211, 0.7)' },
 };
 
 const TYPE_LABEL: Record<AssetType, string> = {
@@ -110,7 +124,10 @@ export default function HoldingsScreen() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const tabBarHeight = useTabBarHeight();
 
-  const holdings = state.status === 'ready' ? state.data.data.holdings : EMPTY_HOLDINGS;
+  // Bank balances aren't holdings — they stay in the portfolio total but
+  // not in this list.
+  const allHoldings = state.status === 'ready' ? state.data.data.holdings : EMPTY_HOLDINGS;
+  const holdings = useMemo(() => allHoldings.filter((h) => h.type !== 'bank'), [allHoldings]);
   const q = query.trim().toLowerCase();
   const rows = useMemo(() => {
     const filtered = holdings
@@ -149,11 +166,6 @@ export default function HoldingsScreen() {
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.headerWrap}>
-          <PageHeader
-            title="Holdings"
-            subtitle="Every asset in one explorer, sort it, filter it, open any row."
-            navAsOf={state.data.data.client.navAsOf}
-          />
           <View style={styles.searchBox}>
             <Text style={styles.searchIcon}>🔍</Text>
             <TextInput
@@ -204,7 +216,7 @@ export default function HoldingsScreen() {
             const active = sort.key === col.key;
             return (
               <Pressable key={col.key} onPress={() => setSortKey(col.key)} style={styles.sortChip}>
-                <Text style={[styles.sortChipText, active && styles.sortChipTextActive]}>
+                <Text style={[styles.sortChipText, active && styles.sortChipTextActive]} maxFontSizeMultiplier={1.3}>
                   {col.label}
                   {active ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
                 </Text>
@@ -219,6 +231,16 @@ export default function HoldingsScreen() {
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />
           }>
+          {/* Scrolls away with the list rather than sitting fixed above it —
+              fixed, it took over a third of a small phone's screen. Search,
+              filters and sort stay put. */}
+          <View style={styles.pageHeader}>
+            <PageHeader
+              title="Holdings"
+              subtitle="Every asset in one explorer, sort it, filter it, open any row."
+              navAsOf={state.data.data.client.navAsOf}
+            />
+          </View>
           {/* Same gate as `upload-statement.tsx` itself (casUploadEnabled
               && something is actually missing) — matches web's own
               placement, embedded under the holdings list rather than a
@@ -277,6 +299,16 @@ function CapPill({ cap }: { cap: CapBand }) {
   );
 }
 
+function HoldingTag({ holding: h }: { holding: Holding }) {
+  const tag = TYPE_TAG[h.type];
+  if (!tag) return <CapPill cap={h.cap} />;
+  return (
+    <View style={[styles.capPill, { backgroundColor: tag.color }]}>
+      <Text style={styles.capPillText}>{tag.label}</Text>
+    </View>
+  );
+}
+
 function countByType(holdings: Holding[]) {
   const counts = new Map<AssetType, number>();
   for (const h of holdings) counts.set(h.type, (counts.get(h.type) ?? 0) + 1);
@@ -288,7 +320,11 @@ function countByType(holdings: Holding[]) {
 function FilterChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
     <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
-      <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>{label}</Text>
+      {/* The row has a fixed height (see chipsRow), so very large system
+          text is capped here rather than clipped. */}
+      <Text style={[styles.chipLabel, active && styles.chipLabelActive]} maxFontSizeMultiplier={1.3}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
@@ -302,17 +338,10 @@ function HoldingRow({ holding: h, open, onToggle }: { holding: Holding; open: bo
             {h.name}
           </Text>
           <View style={styles.rowMetaLine}>
-            {/* A fund has no cap band of its own (web leaves the cell
-                blank), which showed as an empty box here — label it as a
-                mutual fund instead. */}
-            {h.type === 'mf' ? (
-              <View style={[styles.capPill, styles.mfPill]}>
-                <Text style={styles.capPillText}>MF</Text>
-              </View>
-            ) : (
-              <CapPill cap={h.cap} />
-            )}
-            <Text style={styles.rowMeta}>{h.weightPercent.toFixed(2)}% of portfolio</Text>
+            <HoldingTag holding={h} />
+            <Text style={styles.rowMeta} numberOfLines={1}>
+              {h.weightPercent.toFixed(2)}% of portfolio
+            </Text>
           </View>
         </View>
         <View style={styles.rowValueCol}>
@@ -447,6 +476,9 @@ const styles = StyleSheet.create({
     fontFamily: QodeFont.ui,
     color: QodeColor.accent,
   },
+  pageHeader: {
+    marginBottom: QodeSpace[2],
+  },
   list: {
     paddingHorizontal: QodeSpace[5],
     paddingTop: QodeSpace[3],
@@ -527,11 +559,8 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     color: QodeColor.textMuted,
   },
-  // Sky, not a cap-band color, so "MF" can't be mistaken for a band.
-  mfPill: {
-    backgroundColor: QodeColor.sky,
-  },
   rowMeta: {
+    flexShrink: 1,
     fontFamily: QodeFont.uiRegular,
     fontSize: 11,
     color: QodeColor.textMuted,
@@ -561,6 +590,9 @@ const styles = StyleSheet.create({
     color: QodeColor.textMuted,
   },
   drawerValue: {
+    flexShrink: 1,
+    marginLeft: QodeSpace[3],
+    textAlign: 'right',
     fontFamily: QodeFont.ui,
     fontSize: 12.5,
     color: QodeColor.textPrimary,

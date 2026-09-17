@@ -143,7 +143,9 @@ export function OtpEntryForm({ phone, onSubmit, onChangeNumber, onResend }: OtpE
                 isNext && styles.boxActive,
                 wrong && styles.boxWrong,
               ]}>
-              <Text style={styles.boxDigit}>{otp[i] ?? ''}</Text>
+              <Text style={styles.boxDigit} maxFontSizeMultiplier={1.6}>
+                {otp[i] ?? ''}
+              </Text>
             </View>
           );
         })}
@@ -259,7 +261,7 @@ const styles = StyleSheet.create({
   },
   box: {
     flex: 1,
-    height: 52,
+    minHeight: 52,
     borderRadius: QodeRadius.md,
     borderWidth: 1,
     borderColor: QodeColor.controlBorder,

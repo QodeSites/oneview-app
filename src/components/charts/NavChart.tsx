@@ -261,6 +261,9 @@ export function NavChart({ series, height = 220 }: { series: Series[]; height?: 
           {ticks.map((t) => (
             <Text
               key={t}
+              // Overlays sit at fixed chart positions, so very large system
+              // text is capped rather than left to collide.
+              maxFontSizeMultiplier={1.2}
               style={[
                 styles.axisLabel,
                 styles.axisLabelY,
@@ -288,7 +291,10 @@ export function NavChart({ series, height = 220 }: { series: Series[]; height?: 
             </Text>
           ))}
           {monthTicks.map((m) => (
-            <Text key={m.i} style={[styles.axisLabel, styles.axisLabelX, { left: `${(x(m.i) / W) * 100}%` }]}>
+            <Text
+              key={m.i}
+              maxFontSizeMultiplier={1.2}
+              style={[styles.axisLabel, styles.axisLabelX, { left: `${(x(m.i) / W) * 100}%` }]}>
               {m.label}
             </Text>
           ))}

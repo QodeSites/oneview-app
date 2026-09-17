@@ -55,10 +55,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: QodeColor.divider,
   },
-  rowLeft: { flex: 1 },
+  // The label keeps its width and a long value (an email) wraps, rather
+  // than the value squeezing the label down to nothing.
+  rowLeft: { flexShrink: 0, minWidth: 90, maxWidth: '45%' },
   rowLabel: { fontFamily: QodeFont.uiRegular, fontSize: 13, color: QodeColor.textPrimary },
   rowSub: { fontFamily: QodeFont.uiRegular, fontSize: 11, color: QodeColor.textMuted, marginTop: 1 },
-  rowValue: { fontFamily: QodeFont.uiRegular, fontSize: 13, color: QodeColor.textSecondary, flexShrink: 1, textAlign: 'right' },
+  rowValue: { fontFamily: QodeFont.uiRegular, fontSize: 13, color: QodeColor.textSecondary, flex: 1, textAlign: 'right' },
   note: {
     fontFamily: QodeFont.uiRegular,
     fontSize: 11.5,

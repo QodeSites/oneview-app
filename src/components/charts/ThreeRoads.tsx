@@ -280,7 +280,14 @@ export function ThreeRoads({ gap }: { gap: WealthGap }) {
                     transform: [{ translateY: up ? -22 : 4 }],
                   },
                 ]}>
-                <Text style={[styles.pctVal, l.percent >= 0 ? styles.pos : styles.neg]}>{signedPct(l.percent)}</Text>
+                <Text
+                  style={[styles.pctVal, l.percent >= 0 ? styles.pos : styles.neg]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.7}
+                  maxFontSizeMultiplier={1.2}>
+                  {signedPct(l.percent)}
+                </Text>
               </View>
             );
           })}
@@ -368,7 +375,9 @@ export function ThreeRoads({ gap }: { gap: WealthGap }) {
                 )}
               </View>
               <View style={styles.numBlock}>
-                <Text style={styles.amt}>{money(l.value)}</Text>
+                <Text style={styles.amt} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+                  {money(l.value)}
+                </Text>
                 <Text style={[styles.amtDelta, delta >= 0 ? styles.pos : styles.neg]}>
                   {delta >= 0 ? '+' : '−'}
                   {money(Math.abs(delta))}
@@ -446,7 +455,8 @@ const styles = StyleSheet.create({
   // on the right claim theirs, which is always enough for any of these
   // three labels at any card width — the whole reason this row exists.
   nameBlock: { flex: 1, minWidth: 0 },
-  numBlock: { alignItems: 'flex-end' },
+  // Capped so the leg's name always keeps some room on a narrow phone.
+  numBlock: { alignItems: 'flex-end', maxWidth: '60%' },
   label: { fontFamily: QodeFont.uiRegular, fontSize: 13, color: QodeColor.textMuted },
   pill: {
     backgroundColor: QodeColor.gold,

@@ -95,8 +95,18 @@ export function Donut({
       </Svg>
       {centerValue ? (
         <View style={[StyleSheet.absoluteFill, styles.center]}>
-          {centerLabel ? <Text style={styles.centerLabel}>{centerLabel}</Text> : null}
-          <Text style={styles.centerValue}>{centerValue}</Text>
+          {/* Kept inside the hole: a long amount shrinks to fit instead of
+              running over the ring on a small donut. */}
+          <View style={[styles.center, { width: size - 2 * strokeWidth - 8 }]}>
+            {centerLabel ? (
+              <Text style={styles.centerLabel} numberOfLines={1}>
+                {centerLabel}
+              </Text>
+            ) : null}
+            <Text style={styles.centerValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5}>
+              {centerValue}
+            </Text>
+          </View>
         </View>
       ) : null}
     </View>

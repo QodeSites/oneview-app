@@ -21,6 +21,8 @@ import { getCapAnalysis } from '@/lib/reviewApi';
 // actual money figures, can still carry a separate `"micro"` slice — see
 // `shareOf`/`rowsFor`.
 const KNOWN_SECTION_IDS: BucketId[] = ['large', 'mid', 'small'];
+/** Narrowest band-bar segment that can hold its "12.34%" label. */
+const BAND_LABEL_MIN_WIDTH = 46;
 type Tab = BucketId | 'others';
 
 /**
@@ -71,6 +73,12 @@ export default function SegmentsScreen() {
       setActive(cap as Tab);
     }
   }
+  // The one metric whose ⓘ definition is open, as `${band}:${metric}` —
+  // opening another closes it, and switching tabs leaves none open.
+  const [openDefinition, setOpenDefinition] = useState<string | null>(null);
+  // Width of the SEBI band bar, so a segment's % label is only drawn where
+  // it fits — a fixed share cut-off was too loose on a small phone.
+  const [bandBarWidth, setBandBarWidth] = useState(0);
   if (state.status === 'loading') {
     return (
       <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
@@ -145,41 +153,41 @@ export default function SegmentsScreen() {
   return (
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <View style={styles.headerWrap}>
-          <PageHeader
-            title="Segment Analysis"
-            subtitle="How much of you sits in large, mid and small caps, directly and through funds."
-            navAsOf={data.client.navAsOf}
-          />
-        </View>
-
-        <View style={styles.chipsRow}>
-          {sections.map((s) => (
-            <Pressable
-              key={s.id}
-              onPress={() => setActive(s.id)}
-              style={[styles.chip, !isOthers && sectionId === s.id && styles.chipActive]}>
-              <Text style={[styles.chipLabel, !isOthers && sectionId === s.id && styles.chipLabelActive]}>
-                {s.label} · {shareOf(s.id).percent.toFixed(2)}%
-              </Text>
-            </Pressable>
-          ))}
-          {/* Others earns a chip of its own, same as web — a tab row that
-              omitted it would imply the three bands were the whole story. */}
-          {others && others.value > 0 ? (
-            <Pressable onPress={() => setActive('others')} style={[styles.chip, isOthers && styles.chipActive]}>
-              <Text style={[styles.chipLabel, isOthers && styles.chipLabelActive]}>
-                Others · {others.percent.toFixed(2)}%
-              </Text>
-            </Pressable>
-          ) : null}
-        </View>
-
         <ScrollView
           key={isOthers ? 'others' : sectionId}
           contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + QodeSpace[3] }]}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
+          {/* Header and band chips scroll with the page rather than
+              sitting fixed above it, where on a small phone they took
+              over a third of the screen. */}
+          <PageHeader
+            title="Segment Analysis"
+            subtitle="How much of you sits in large, mid and small caps, directly and through funds."
+            navAsOf={data.client.navAsOf}
+          />
+
+          <View style={styles.chipsRow}>
+            {sections.map((s) => (
+              <Pressable
+                key={s.id}
+                onPress={() => setActive(s.id)}
+                style={[styles.chip, !isOthers && sectionId === s.id && styles.chipActive]}>
+                <Text style={[styles.chipLabel, !isOthers && sectionId === s.id && styles.chipLabelActive]}>
+                  {s.label} · {shareOf(s.id).percent.toFixed(2)}%
+                </Text>
+              </Pressable>
+            ))}
+            {/* Others earns a chip of its own, same as web — a tab row that
+                omitted it would imply the three bands were the whole story. */}
+            {others && others.value > 0 ? (
+              <Pressable onPress={() => setActive('others')} style={[styles.chip, isOthers && styles.chipActive]}>
+                <Text style={[styles.chipLabel, isOthers && styles.chipLabelActive]}>
+                  Others · {others.percent.toFixed(2)}%
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
           {calculating && !isOthers && !hasChart ? (
             <View style={styles.noticeCard}>
               <Text style={styles.noticeTitle}>Building your cap comparison</Text>
@@ -209,22 +217,27 @@ export default function SegmentsScreen() {
             <View style={styles.metrics}>
               {section.metrics
                 .filter((m) => (m.value !== null && m.value !== 0) || m.strategyValue !== null || m.benchmarkValue !== null)
-                .map((m) => (
-                  <MetricTile
-                    key={m.key}
-                    metric={m}
-                    strategyLabel={section.strategy?.name ?? 'Qode'}
-                    benchmarkLabel={section.benchmark ?? 'Index'}
-                    held={held}
-                  />
-                ))}
+                .map((m) => {
+                  const id = `${section.id}:${m.key}`;
+                  return (
+                    <MetricTile
+                      key={m.key}
+                      metric={m}
+                      strategyLabel={section.strategy?.name ?? 'Qode'}
+                      benchmarkLabel={section.benchmark ?? 'Index'}
+                      held={held}
+                      showDefinition={openDefinition === id}
+                      onToggleDefinition={() => setOpenDefinition((cur) => (cur === id ? null : id))}
+                    />
+                  );
+                })}
             </View>
           ) : null}
 
           {section && equityTotal > 0 ? (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>How your equity splits across the SEBI bands</Text>
-              <View style={styles.bandBar}>
+              <View style={styles.bandBar} onLayout={(e) => setBandBarWidth(e.nativeEvent.layout.width)}>
                 {sections
                   .filter((s) => shareOf(s.id).value > 0)
                   .map((s) => {
@@ -254,7 +267,11 @@ export default function SegmentsScreen() {
                           styles.bandBarSeg,
                           { flex: shareValue, backgroundColor: CapBandColor[s.id], opacity: s.id === sectionId ? 1 : 0.42 },
                         ]}>
-                        {segPct >= 8 ? <Text style={styles.bandBarLabel}>{segPct.toFixed(2)}%</Text> : null}
+                        {(segPct / 100) * bandBarWidth >= BAND_LABEL_MIN_WIDTH ? (
+                          <Text style={styles.bandBarLabel} numberOfLines={1} maxFontSizeMultiplier={1.2}>
+                            {segPct.toFixed(2)}%
+                          </Text>
+                        ) : null}
                       </View>
                     );
                   })}
@@ -267,7 +284,7 @@ export default function SegmentsScreen() {
                   bar itself to match a segment to its color — there's no
                   touch equivalent, and once a segment is too thin to carry
                   its own inline label (Small & Micro, on a real account,
-                  is under the 8% threshold above), color was the only
+                  is often too thin for its label above), color was the only
                   thing left identifying it. The dot fixes that without
                   changing the text web already has right. */}
               <View style={styles.bandSplitRow}>
@@ -298,7 +315,7 @@ export default function SegmentsScreen() {
                 <View style={styles.othersList}>
                   {othersBreakdown.map((r) => (
                     <View key={r.label} style={styles.othersRow}>
-                      <Text style={styles.othersName}>
+                      <Text style={[styles.othersName, styles.othersNameCol]}>
                         {r.label}
                         {r.count != null ? (
                           <Text style={styles.othersVia}> · {r.count} {r.count === 1 ? 'holding' : 'holdings'}</Text>
@@ -460,13 +477,17 @@ function MetricTile({
   strategyLabel,
   benchmarkLabel,
   held,
+  showDefinition,
+  onToggleDefinition,
 }: {
   metric: MetricCard;
   strategyLabel: string;
   benchmarkLabel: string;
   held: boolean;
+  /** Controlled by the screen, so only one definition is open at a time. */
+  showDefinition: boolean;
+  onToggleDefinition: () => void;
 }) {
-  const [showDefinition, setShowDefinition] = useState(false);
   const wins = (a: number, b: number) => (metric.better === 'higher' ? a >= b : Math.abs(a) <= Math.abs(b));
   const good = metric.value != null && metric.strategyValue != null && wins(metric.value, metric.strategyValue);
 
@@ -507,7 +528,7 @@ function MetricTile({
             earlier this file's changelog) for a one-line caption that
             doesn't warrant it. */}
         <Pressable
-          onPress={() => setShowDefinition((v) => !v)}
+          onPress={onToggleDefinition}
           hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel={showDefinition ? `Hide what ${metric.label} means` : `What ${metric.label} means`}>
@@ -553,22 +574,10 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  headerWrap: {
-    paddingHorizontal: QodeSpace[5],
-    paddingTop: QodeSpace[4],
-    gap: QodeSpace[2],
-  },
   chipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: QodeSpace[2],
-    paddingHorizontal: QodeSpace[5],
-    paddingTop: QodeSpace[3],
-    // Four chips ("Small & Micro · 12.60%" is the long one) wrap to two
-    // rows on a typical phone width. Without its own bottom padding, the
-    // wrapped second row sat flush against the scrolling content directly
-    // below it — reported 16 Sep as the bands "getting clipped" on scroll.
-    paddingBottom: QodeSpace[3],
   },
   chip: {
     alignItems: 'center',
@@ -664,6 +673,7 @@ const styles = StyleSheet.create({
     gap: QodeSpace[2],
   },
   metricTileLabel: {
+    flex: 1,
     fontFamily: QodeFont.uiRegular,
     fontSize: 11.5,
     color: QodeColor.textMuted,
@@ -926,6 +936,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   splitLegendLeft: {
+    flexShrink: 1,
+    marginRight: QodeSpace[2],
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
@@ -936,6 +948,7 @@ const styles = StyleSheet.create({
     borderRadius: 2,
   },
   splitLegendText: {
+    flexShrink: 1,
     fontFamily: QodeFont.uiRegular,
     fontSize: 13,
     color: QodeColor.textSecondary,

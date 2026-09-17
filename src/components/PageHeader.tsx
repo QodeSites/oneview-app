@@ -88,10 +88,15 @@ const styles = StyleSheet.create({
     color: QodeColor.textMuted,
     marginTop: 2,
   },
+  // Capped so a long date can't squeeze the title into breaking mid-word
+  // on narrow phones — the date wraps instead.
   metaCol: {
     alignItems: 'flex-end',
+    flexShrink: 1,
+    maxWidth: '40%',
   },
   metaText: {
+    textAlign: 'right',
     fontFamily: QodeFont.uiRegular,
     fontSize: 11,
     color: QodeColor.textMuted,

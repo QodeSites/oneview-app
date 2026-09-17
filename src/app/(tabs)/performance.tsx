@@ -170,7 +170,9 @@ export default function PerformanceScreen() {
           {/* ── Hero: total portfolio ── */}
           <View style={styles.hero}>
             <Text style={styles.heroLabel}>Total portfolio</Text>
-            <Text style={styles.heroValue}>{money(data.totals.portfolio)}</Text>
+            <Text style={styles.heroValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
+              {money(data.totals.portfolio)}
+            </Text>
             <Text style={styles.heroSplit}>
               Securities {money(data.totals.securities)} · Bank &amp; deposits {money(data.totals.cash)}
             </Text>
@@ -363,30 +365,26 @@ export default function PerformanceScreen() {
                       ? 'Straight from your own Segment Analysis donut, mapped onto Qode’s three strategies — Large Cap → Qode All Weather, Mid Cap → Qode Tactical Fund, Small Cap → Qode Growth Fund. Others has no equity strategy, so it is left out and the three shares are re-scaled to total 100%.'
                       : 'A fixed model mix of Qode’s strategies, computed daily and rebased to 100 on the same day as every other line. It is what that mix did over this window — not a portfolio tailored to you, and not advice.'}
                 </Text>
-                {/* `alignItems: 'center'`, not the shared `donutRow`'s own
-                    `flex-start` (fine for the allocation card below, where
-                    the legend is short) — this legend carries a role
-                    description under every row, making it noticeably
-                    taller than the donut beside it, which then read as
-                    pinned to the top of the row instead of centered
-                    against it (reported 16 Sep). */}
-                <View style={[styles.donutRow, styles.donutRowCenter]}>
+                {/* Donut above a full-width legend, like the market-cap
+                    card below. Side by side, a small phone left the legend
+                    under 100dp and the strategy names broke mid-word. */}
+                <View style={styles.donutCenter}>
                   <Donut
                     size={130}
                     slices={shownBlend.map((b) => ({ label: b.name, percent: b.percent, color: StrategyColor[b.code] }))}
                   />
-                  <View style={styles.legend}>
-                    {shownBlend.map((b) => (
-                      <View key={b.code} style={styles.blendRow}>
-                        <View style={styles.blendHead}>
-                          <View style={[styles.legendSwatch, { backgroundColor: StrategyColor[b.code] }]} />
-                          <Text style={styles.legendLabel}>{b.name}</Text>
-                          <Text style={styles.blendPercent}>{b.percent}%</Text>
-                        </View>
-                        <Text style={styles.blendRole}>{b.role}</Text>
+                </View>
+                <View style={[styles.legend, styles.legendFull]}>
+                  {shownBlend.map((b) => (
+                    <View key={b.code} style={styles.blendRow}>
+                      <View style={styles.blendHead}>
+                        <View style={[styles.legendSwatch, { backgroundColor: StrategyColor[b.code] }]} />
+                        <Text style={[styles.legendLabel, styles.shrink]}>{b.name}</Text>
+                        <Text style={styles.blendPercent}>{b.percent}%</Text>
                       </View>
-                    ))}
-                  </View>
+                      <Text style={styles.blendRole}>{b.role}</Text>
+                    </View>
+                  ))}
                 </View>
               </View>
             </>
@@ -478,7 +476,15 @@ function GapFigure({ label, value, note, total }: { label: string; value: number
   return (
     <View style={styles.gapFigure}>
       <Text style={styles.gapFigureLabel}>{label}</Text>
-      <Text style={[styles.gapFigureValue, total && styles.gapFigureValueTotal]}>{money(value)}</Text>
+      {/* Three figures share one row — shrink a long amount rather than
+          wrap it on a narrow phone. */}
+      <Text
+        style={[styles.gapFigureValue, total && styles.gapFigureValueTotal]}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.6}>
+        {money(value)}
+      </Text>
       <Text style={styles.gapFigureNote}>{note}</Text>
     </View>
   );
@@ -640,14 +646,13 @@ const styles = StyleSheet.create({
   compareKey: { flex: 1, fontFamily: QodeFont.uiRegular, fontSize: 12.5, color: QodeColor.textSecondary },
   compareVal: { flex: 1, fontFamily: QodeFont.ui, fontSize: 13, textAlign: 'right', color: QodeColor.cream },
   compareValGold: { color: QodeColor.accent },
-  donutRow: { flexDirection: 'row', gap: QodeSpace[4], marginTop: QodeSpace[3], alignItems: 'flex-start' },
-  donutRowCenter: { alignItems: 'center' },
+  shrink: { flexShrink: 1 },
   donutCenter: { alignItems: 'center', marginTop: QodeSpace[3] },
   legend: { flex: 1, gap: QodeSpace[1] },
   // Full width, not sharing a row with the donut — `flex: 1` above is
   // meaningless without a flex-row sibling to share space with; this
   // resets it and gives the now-standalone legend its own top margin
-  // instead of inheriting `donutRow`'s (gone here).
+  // instead of a row's.
   legendFull: { flex: undefined, width: '100%', marginTop: QodeSpace[4] },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: QodeSpace[2], paddingVertical: QodeSpace[1] },
   legendSwatch: { width: 10, height: 10, borderRadius: 5 },

@@ -152,8 +152,11 @@ export default function UploadStatementScreen() {
               onPress={() => {
                 Linking.openURL('mailto:investor.relations@qodeinvest.com').catch(() => {});
               }}>
-              <Text style={styles.retryText}>Email investor.relations@qodeinvest.com</Text>
+              <Text style={styles.retryText}>Email us</Text>
             </Pressable>
+            {/* The address on its own line — inside the button it ran past
+                the edges of a small phone. */}
+            <Text style={styles.message}>investor.relations@qodeinvest.com</Text>
           </View>
         ) : (
           <ScrollView
@@ -631,6 +634,8 @@ const styles = StyleSheet.create({
     borderBottomColor: QodeColor.divider,
   },
   headerTitle: {
+    flex: 1,
+    marginRight: QodeSpace[3],
     fontFamily: QodeFont.display,
     fontSize: 17,
     color: QodeColor.cream,

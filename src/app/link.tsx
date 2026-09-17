@@ -311,6 +311,8 @@ const styles = StyleSheet.create({
     borderBottomColor: QodeColor.divider,
   },
   title: {
+    flex: 1,
+    marginRight: QodeSpace[3],
     fontFamily: QodeFont.display,
     fontSize: 17,
     color: QodeColor.cream,

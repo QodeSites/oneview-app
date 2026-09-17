@@ -99,7 +99,11 @@ export function UpdatePrompt() {
           <Text style={styles.eyebrow}>VERSION {status.latest}</Text>
           <Text style={styles.title}>A new version is available</Text>
           <Text style={styles.body}>Update Qode OneView to get the latest improvements and fixes.</Text>
-          {notes}
+          {/* Scrolls on its own so a long list of notes can't push the
+              buttons off a short screen. */}
+          <ScrollView style={styles.notesScroll} bounces={false}>
+            {notes}
+          </ScrollView>
           <View style={styles.sheetActions}>
             {updateButton}
             <Pressable accessibilityRole="button" style={styles.quiet} onPress={later}>
@@ -139,7 +143,12 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     backgroundColor: 'rgba(0, 0, 0, 0.55)',
   },
+  notesScroll: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
   sheet: {
+    maxHeight: '90%',
     backgroundColor: QodeColor.green,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
