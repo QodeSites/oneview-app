@@ -26,17 +26,30 @@ import { notifySessionExpired } from '@/lib/session-events';
 /**
  * Resolves qode-oneview's address for local development.
  *
- * `EXPO_PUBLIC_API_BASE_URL` (set in `.env`, e.g. `http://192.168.1.50:3171`)
- * wins when present — required for a real device, since "localhost" from a
- * phone means the phone itself, not the dev machine.
+ * `EXPO_PUBLIC_API_BASE_URL` (set in `.env`, or in `eas.json`'s own
+ * `build.<profile>.env` for a cloud build — .env is gitignored and never
+ * reaches EAS) wins when present — required for a real device, since
+ * "localhost" from a phone means the phone itself, not the dev machine.
  *
  * Failing that, this reuses whatever LAN host Metro itself is already
  * bound to (`Constants.expoConfig.hostUri`, e.g. "192.168.1.50:8081") and
  * swaps in qode-oneview's own port — the phone is already talking to that
  * exact machine to load the app, so this needs no separate configuration
  * in the common case of "both dev servers running on the same laptop."
+ *
+ * Last resort — production, not `localhost`. `hostUri` is only ever set
+ * inside a live Metro/dev-client session; a standalone build (TestFlight,
+ * a shared preview .apk/.app) never has one, so a build that somehow
+ * shipped without its `env` block baked in used to fall all the way
+ * through to `http://localhost:3171` — the *device's own* loopback, with
+ * nothing listening on it, guaranteed to fail every request with "Could
+ * not reach the server" and no way to tell why (reported 18 Sep, on an
+ * iOS Simulator build that turned out to predate `eas.json` gaining its
+ * `preview` profile's `env` block — commit b53f486, 17 Sep). A build
+ * genuinely missing its own config should still reach something real.
  */
 const QODE_ONEVIEW_PORT = 3171;
+const PRODUCTION_API_BASE_URL = 'https://oneview.qodeinvest.com';
 
 function resolveDevHost(): string | null {
   const hostUri = Constants.expoConfig?.hostUri ?? Constants.expoGoConfig?.hostUri ?? null;
@@ -53,7 +66,7 @@ export function getApiBaseUrl(): string {
   const host = resolveDevHost();
   if (host) return `http://${host}:${QODE_ONEVIEW_PORT}`;
 
-  return `http://localhost:${QODE_ONEVIEW_PORT}`;
+  return PRODUCTION_API_BASE_URL;
 }
 
 /**
