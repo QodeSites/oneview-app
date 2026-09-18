@@ -7,8 +7,9 @@ import { useEffect, useRef, useState } from 'react';
 import { LayoutChangeEvent, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Defs, Ellipse, RadialGradient, Rect, Stop, Svg } from 'react-native-svg';
 
-import { HoldingsIcon, MfXrayIcon, MoreIcon, PerformanceIcon, SegmentsIcon } from './TabIcons';
+import { HoldingsIcon, MfXrayIcon, MoreIcon, PerformanceIcon, SegmentsIcon, VsiIcon } from './TabIcons';
 import { AnalysisBuilding, BuildingReview } from './BuildingReview';
 import { ErrorView, LoadingView } from './RemoteStateView';
 import { NothingYet } from './NothingYet';
@@ -21,15 +22,32 @@ import { getReview, type ReviewPayload } from '@/lib/reviewApi';
 
 /**
  * "Floating Pill" — picked from the four options reviewed as an artifact
- * (tab-bar-options.html) over the earlier full-width bar. Icons only, no
- * labels; the bar itself lifts off the screen edges into a rounded
- * capsule; the active tab is marked by a single cream circle that GLIDES
- * between cells — a plain `withTiming` translateX, no spring/bounce —
- * rather than each cell independently popping its own circle in and out
- * (that per-cell spring read as "bubbling"; asked to replace it, 15 Sep).
+ * (tab-bar-options.html) over the earlier full-width bar. The bar itself
+ * lifts off the screen edges into a rounded capsule; the active tab is
+ * marked by a glowing gold underline that GLIDES between cells — a plain
+ * `withTiming` translateX, no spring/bounce — rather than each cell
+ * independently popping its own indicator in and out (that per-cell
+ * spring read as "bubbling"; asked to replace it, 15 Sep).
  * `activeIndex` comes from `usePathname()` matched against `TABS`, since
  * `expo-router/ui`'s `TabTrigger` only tells an individual cell whether
  * IT is focused, not the bar as a whole which index that is.
+ *
+ * Each cell carries a small label under its icon (added back 18 Sep, on
+ * request — the original review went icons-only). That's also why the
+ * indicator is an underline now rather than the circle it replaced (also
+ * 18 Sep): a circle sized to sit behind just the icon no longer read as
+ * "marking this cell" once a label sat below it too, uncovered — an
+ * underline BELOW both needs no size that tries to cover their combined
+ * footprint. The active icon and label turn gold to match, the same
+ * "user's own data/focus" gold every other screen in this app reserves
+ * for exactly this kind of state.
+ *
+ * The glow is an SVG radial gradient behind the bar (`Indicator`, in
+ * `BottomBar`), not a native `shadow*`/`elevation` style — same reasoning
+ * as `BrandMark.tsx`'s own glow: iOS shadows need an opaque shape to cast
+ * against and Android's `elevation` draws its own grey/black shadow, not
+ * a colored one, so neither reliably renders a gold halo. SVG renders
+ * identically on both.
  *
  * `TAB_BAR_PILL_HEIGHT`/`FLOATING_MARGIN` are duplicated (as documented
  * constants, not an import) in `hooks/use-tab-bar-height.ts`, which every
@@ -46,6 +64,11 @@ const TABS = [
   { name: 'segments', href: '/segments', label: 'Segments', Icon: SegmentsIcon },
   { name: 'mf-xray', href: '/mf-xray', label: 'MF X-Ray', Icon: MfXrayIcon },
   { name: 'holdings', href: '/holdings', label: 'Holdings', Icon: HoldingsIcon },
+  // Market-wide, not derived from this customer's own holdings — unlike
+  // every other tab here. Still a primary tab (not tucked into More, where
+  // web itself puts it) per explicit request; placed last of the data tabs,
+  // right before More, matching web's own nav order (…holdings, vsi, …).
+  { name: 'vsi', href: '/vsi', label: 'VSI', Icon: VsiIcon },
   { name: 'more', href: '/more', label: 'More', Icon: MoreIcon },
 ] as const;
 
@@ -111,12 +134,9 @@ export default function AppTabs() {
           hidden={!showTabs}>
           {TABS.map((tab, index) => (
             <TabTrigger key={tab.name} name={tab.name} href={tab.href} asChild>
-              {/* Icons only now — `label` still named on TABS (and passed
-                  to TabTrigger's own `name`/accessibility wiring via
-                  expo-router/ui) even though TabCell no longer renders
-                  it visually; screen readers still get it. */}
               <TabCell
                 Icon={tab.Icon}
+                label={tab.label}
                 onMeasure={(x, y, width, height) => {
                   cellLayoutsRef.current[index] = { x, y, width, height };
                   setLayoutVersion((v) => v + 1);
@@ -274,19 +294,22 @@ function GateSignOut() {
 
 function TabCell({
   Icon,
+  label,
   isFocused,
   onPress,
   onMeasure,
   ...props
 }: TabTriggerSlotProps & {
   Icon: (p: { color: string; size?: number; filled?: boolean }) => React.JSX.Element;
+  label: string;
   onMeasure: (x: number, y: number, width: number, height: number) => void;
 }) {
-  // No animation of its own anymore — the cream circle marking the active
+  // No animation of its own anymore — the underline marking the active
   // tab is a single shared indicator owned by `BottomBar` now, which glides
   // between cells instead of each one popping its own in and out. This
-  // cell only has to pick its icon color and report its own real position.
-  const color = isFocused ? QodeColor.greenDeep : QodeColor.textMuted;
+  // cell only has to pick its icon/label color and report its own real
+  // position.
+  const color = isFocused ? QodeColor.gold : QodeColor.textMuted;
 
   return (
     <Pressable
@@ -303,12 +326,29 @@ function TabCell({
       }}
       android_ripple={{ color: QodeColor.surfaceRaised, borderless: true, radius: 26 }}
       style={styles.cell}>
-      <Icon color={color} size={19} filled={isFocused} />
+      {/* Icon + label as one centered block, not the cell's own
+          `justifyContent: 'center'` spread across two children — keeps
+          them glued together as a unit above the gliding underline. */}
+      <View style={styles.cellContent}>
+        <Icon color={color} size={19} filled={isFocused} />
+        <Text style={[styles.cellLabel, { color }]} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+          {label}
+        </Text>
+      </View>
     </Pressable>
   );
 }
 
-const INDICATOR_SIZE = 40;
+// The visible underline itself.
+const BAR_WIDTH = 26;
+const BAR_HEIGHT = 3;
+// The soft gold halo around it — an SVG box, not a native shadow (see this
+// file's own top comment). Wider/taller than the bar so the gradient has
+// room to fade to nothing before its own edge.
+const GLOW_WIDTH = 72;
+const GLOW_HEIGHT = 22;
+// Gap between the bar's own bottom edge and the cell's bottom edge.
+const BAR_BOTTOM_GAP = 6;
 const GLIDE_DURATION = 260;
 
 function BottomBar({
@@ -345,8 +385,15 @@ function BottomBar({
   useEffect(() => {
     const layout = cellLayoutsRef.current[activeIndex];
     if (!layout) return;
-    const targetX = layout.x + (layout.width - INDICATOR_SIZE) / 2;
-    const targetY = layout.y + (layout.height - INDICATOR_SIZE) / 2;
+    // Both the bar and its glow box are positioned by the GLOW box's
+    // top-left (what actually glides); the bar sits centered inside it,
+    // both horizontally and vertically, so this solves for the glow
+    // box's origin that puts the BAR where it belongs: horizontally
+    // centered on the cell, `BAR_BOTTOM_GAP` up from the cell's bottom
+    // edge.
+    const targetX = layout.x + (layout.width - GLOW_WIDTH) / 2;
+    const barCenterY = layout.y + layout.height - BAR_BOTTOM_GAP - BAR_HEIGHT / 2;
+    const targetY = barCenterY - GLOW_HEIGHT / 2;
     indicatorY.value = targetY;
     if (!hasMeasured.current) {
       indicatorX.value = targetX;
@@ -363,20 +410,22 @@ function BottomBar({
   // tab switch, even though re-checking every `useSharedValue`/
   // `useAnimatedStyle` in this app's own source turned up no other place
   // that reads one — this is the only real usage, and the read genuinely
-  // only ever happens inside this worklet. Folding the static circle
-  // styling into the object this worklet returns removes the "static
-  // StyleSheet id + animated style" array shape that several open
-  // react-native-reanimated issues report as a false-positive trigger for
-  // this exact warning on 3.x/4.x. Not confirmed against a device — if the
-  // warning persists after this, it isn't coming from this component.
+  // only ever happens inside this worklet. Folding the static box sizing
+  // into the object this worklet returns removes the "static StyleSheet
+  // id + animated style" array shape that several open react-native-
+  // reanimated issues report as a false-positive trigger for this exact
+  // warning on 3.x/4.x. Not confirmed against a device — if the warning
+  // persists after this, it isn't coming from this component.
+  //
+  // Only position glides here — the glow+bar graphic itself (below) is a
+  // static SVG child, not redrawn per frame; a `transform` on the plain
+  // wrapping View is all reanimated needs to touch.
   const indicatorStyle = useAnimatedStyle(() => ({
     position: 'absolute',
     left: 0,
     top: 0,
-    width: INDICATOR_SIZE,
-    height: INDICATOR_SIZE,
-    borderRadius: INDICATOR_SIZE / 2,
-    backgroundColor: QodeColor.cream,
+    width: GLOW_WIDTH,
+    height: GLOW_HEIGHT,
     transform: [{ translateX: indicatorX.value }, { translateY: indicatorY.value }],
   }));
 
@@ -391,10 +440,41 @@ function BottomBar({
         hidden && styles.barHidden,
       ]}>
       <View style={styles.row}>
-        <Animated.View pointerEvents="none" style={indicatorStyle} />
+        <Animated.View pointerEvents="none" style={indicatorStyle}>
+          <Indicator />
+        </Animated.View>
         {children}
       </View>
     </GlassView>
+  );
+}
+
+/**
+ * The active-tab mark itself: a soft gold halo (SVG radial gradient, same
+ * stops as `BrandMark.tsx`'s own glow) behind a solid gold bar. Static —
+ * `BottomBar` only ever moves the box this sits in, via `transform`; the
+ * graphic inside never changes.
+ */
+function Indicator() {
+  return (
+    <Svg width={GLOW_WIDTH} height={GLOW_HEIGHT} viewBox={`0 0 ${GLOW_WIDTH} ${GLOW_HEIGHT}`}>
+      <Defs>
+        <RadialGradient id="tabGlow" cx="50%" cy="50%" r="50%">
+          <Stop offset="0%" stopColor={QodeColor.gold} stopOpacity={0.5} />
+          <Stop offset="55%" stopColor={QodeColor.gold} stopOpacity={0.16} />
+          <Stop offset="100%" stopColor={QodeColor.gold} stopOpacity={0} />
+        </RadialGradient>
+      </Defs>
+      <Ellipse cx={GLOW_WIDTH / 2} cy={GLOW_HEIGHT / 2} rx={GLOW_WIDTH / 2} ry={GLOW_HEIGHT / 2} fill="url(#tabGlow)" />
+      <Rect
+        x={(GLOW_WIDTH - BAR_WIDTH) / 2}
+        y={(GLOW_HEIGHT - BAR_HEIGHT) / 2}
+        width={BAR_WIDTH}
+        height={BAR_HEIGHT}
+        rx={BAR_HEIGHT / 2}
+        fill={QodeColor.gold}
+      />
+    </Svg>
   );
 }
 
@@ -464,11 +544,32 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     paddingVertical: 6,
+    // Horizontal, not just vertical: `bar`'s `borderRadius: 999` makes the
+    // pill's left/right edges a full semicircle, not a flat side, so a
+    // row spanning its full width with no side padding lets the OUTER
+    // cells' content render right up against that curve. Every label is
+    // short enough that this went unnoticed until the longest one
+    // ("Performance", also the first/leftmost cell — closest to the
+    // curve with nothing to its own left) sat close enough to read as
+    // intersecting the bar's rounded corner (reported 18 Sep; "More", the
+    // last cell, only looked fine because its short label happened to
+    // leave slack regardless). This gives every cell the same clearance
+    // from both curved ends, not just a fix for the one label that
+    // happened to be long enough to expose it.
+    paddingHorizontal: 10,
   },
   cell: {
     flex: 1,
     height: 52,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  cellContent: {
+    alignItems: 'center',
+    gap: 2,
+  },
+  cellLabel: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 9.5,
   },
 });

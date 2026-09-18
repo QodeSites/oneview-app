@@ -61,6 +61,17 @@ export function HoldingsIcon({ color, size = 20, filled = false }: IconProps) {
   );
 }
 
+/** Bar chart — Market Breadth's own shape (buckets of stocks), the one
+ * standard glyph the other four tabs didn't already use (line, donut,
+ * layers, list). */
+export function VsiIcon({ color, size = 20, filled = false }: IconProps) {
+  return (
+    <Svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke={color} strokeWidth={filled ? 2.5 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+      <Path d="M5 19V10M12 19V5M19 19V13" />
+    </Svg>
+  );
+}
+
 export function MoreIcon({ color, size = 20, filled = false }: IconProps) {
   return (
     <Svg viewBox="0 0 24 24" width={size} height={size} fill={color}>
