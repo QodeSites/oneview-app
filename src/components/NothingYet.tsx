@@ -19,9 +19,12 @@ import type { PresenceSummary } from '@/lib/reviewApi';
  * customer's money — the other case ("your institutions replied and found
  * nothing") is a real answer and must not be worded the same way.
  *
- * NOT ported: the CasUpload statement-upload fallback the web version offers
- * alongside "Link another account" — that flow doesn't exist on mobile yet
- * (see PROGRESS.md's `mobile-profile` section).
+ * NOT ported: the CasUpload statement-upload fallback — tried here 18 Sep,
+ * reverted same day. Checked against web's own BuildingReview.tsx: the
+ * upload option only ever appears inside `AggregatorTrouble`, the
+ * fetch-has-actually-failed state (mobile's equivalent:
+ * `BuildingReview.tsx`'s own `AggregatorTrouble`) — never on this
+ * not-yet-attempted screen. Offering it this early was the actual bug.
  */
 export function NothingYet({ presence }: { presence: PresenceSummary }) {
   const router = useRouter();
