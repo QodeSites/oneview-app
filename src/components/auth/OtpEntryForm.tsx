@@ -78,6 +78,7 @@ export function OtpEntryForm({ phone, onSubmit, onChangeNumber, onResend }: OtpE
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(RESEND_COOLDOWN_SECONDS);
   const [focused, setFocused] = useState(false);
+  const inputRef = useRef<TextInput>(null);
 
   const shakeX = useRef(new Animated.Value(0)).current;
   const buttonScale = useRef(new Animated.Value(1)).current;
@@ -130,26 +131,36 @@ export function OtpEntryForm({ phone, onSubmit, onChangeNumber, onResend }: OtpE
         Change number
       </Text>
 
-      <Animated.View style={[styles.boxRow, { transform: [{ translateX: shakeX }] }]}>
-        {Array.from({ length: BOX_COUNT }).map((_, i) => {
-          const filled = i < otp.length;
-          const isNext = i === otp.length && focused;
-          return (
-            <View
-              key={i}
-              style={[
-                styles.box,
-                filled && styles.boxFilled,
-                isNext && styles.boxActive,
-                wrong && styles.boxWrong,
-              ]}>
-              <Text style={styles.boxDigit} maxFontSizeMultiplier={1.6}>
-                {otp[i] ?? ''}
-              </Text>
-            </View>
-          );
-        })}
-        {/* The real input: invisible, sized over the boxes, still carrying
+      {/* A Pressable wrapper, not just the invisible TextInput's own native
+          tap-to-focus: on iOS, a TextInput nested inside a View carrying an
+          animated `transform` (the wrong-code shake below) can lose the
+          ability to regain focus on tap once it's blurred — Android
+          tolerates this, iOS doesn't (reported 18 Sep: "tapping the OTP
+          boxes doesn't bring the keypad back, only on iOS"). Calling
+          `.focus()` explicitly here doesn't depend on that native
+          tap-to-focus path at all, so it works regardless of the
+          transform. Harmless on Android, which already worked. */}
+      <Pressable onPress={() => !busy && inputRef.current?.focus()}>
+        <Animated.View style={[styles.boxRow, { transform: [{ translateX: shakeX }] }]}>
+          {Array.from({ length: BOX_COUNT }).map((_, i) => {
+            const filled = i < otp.length;
+            const isNext = i === otp.length && focused;
+            return (
+              <View
+                key={i}
+                style={[
+                  styles.box,
+                  filled && styles.boxFilled,
+                  isNext && styles.boxActive,
+                  wrong && styles.boxWrong,
+                ]}>
+                <Text style={styles.boxDigit} maxFontSizeMultiplier={1.6}>
+                  {otp[i] ?? ''}
+                </Text>
+              </View>
+            );
+          })}
+          {/* The real input: invisible, sized over the boxes, still carrying
             the exact placeholder/value contract the tests query.
             `textContentType="oneTimeCode"` is what turns on iOS's own
             QuickType-bar code suggestion — zero-config, reads the incoming
@@ -172,24 +183,26 @@ export function OtpEntryForm({ phone, onSubmit, onChangeNumber, onResend }: OtpE
             MOBILE_BACKEND_CHANGES.md) since it needs a native module that
             can't run in Expo Go, and the priority right now is developing
             and testing inside Expo Go. */}
-        <TextInput
-          style={styles.hiddenInput}
-          placeholder="······"
-          placeholderTextColor="transparent"
-          selectionColor="transparent"
-          caretHidden
-          keyboardType="number-pad"
-          autoComplete="sms-otp"
-          textContentType="oneTimeCode"
-          value={otp}
-          onChangeText={handleChange}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          maxLength={6}
-          editable={!busy}
-          autoFocus
-        />
-      </Animated.View>
+          <TextInput
+            ref={inputRef}
+            style={styles.hiddenInput}
+            placeholder="······"
+            placeholderTextColor="transparent"
+            selectionColor="transparent"
+            caretHidden
+            keyboardType="number-pad"
+            autoComplete="sms-otp"
+            textContentType="oneTimeCode"
+            value={otp}
+            onChangeText={handleChange}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            maxLength={6}
+            editable={!busy}
+            autoFocus
+          />
+        </Animated.View>
+      </Pressable>
 
       {wrong ? (
         <Text style={styles.error}>{errorMessage ?? 'That code did not match. Check the SMS and try again.'}</Text>
