@@ -73,7 +73,7 @@ export function UpdatePrompt() {
               <BrandMark size={34} showWordmark={false} glow />
               <Text style={styles.title}>Update required</Text>
               <Text style={styles.body}>
-                This version of OneView is no longer supported. Update to version {status.latest} to keep using the
+                This version of Qode OneView is no longer supported. Update to version {status.latest} to keep using the
                 app.
               </Text>
               {notes}
@@ -98,7 +98,7 @@ export function UpdatePrompt() {
           <View style={styles.handle} />
           <Text style={styles.eyebrow}>VERSION {status.latest}</Text>
           <Text style={styles.title}>A new version is available</Text>
-          <Text style={styles.body}>Update OneView to get the latest improvements and fixes.</Text>
+          <Text style={styles.body}>Update Qode OneView to get the latest improvements and fixes.</Text>
           {/* Scrolls on its own so a long list of notes can't push the
               buttons off a short screen. */}
           <ScrollView style={styles.notesScroll} bounces={false}>
