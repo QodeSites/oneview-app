@@ -9,6 +9,9 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.qodeinvest.oneview",
+      "infoPlist": {
+        "CFBundleDisplayName": "OneView"
+      },
       "icon": {
         "light": "./assets/images/icon.png",
         "dark": "./assets/images/ios-icon-dark.png",
