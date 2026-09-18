@@ -6,6 +6,7 @@ import {
   DEMO_PROFILE_DATA,
   DEMO_RISK_PROFILE_ANSWERS,
   DEMO_REVIEW_PAYLOAD,
+  DEMO_VSI_PAYLOAD,
   isDemoActive,
 } from '@/lib/demo';
 import { mockReviewData, type ReviewData, type Series, type WealthGap } from '@/lib/mock-data';
@@ -227,4 +228,32 @@ export function getProfileData(): Promise<ApiResult<RealProfileData | null>> {
 export function getRiskProfileData(): Promise<ApiResult<number[] | null>> {
   if (isDemoActive()) return Promise.resolve({ ok: true, data: DEMO_RISK_PROFILE_ANSWERS });
   return getJson<number[] | null>('/api/mobile/risk-profile');
+}
+
+export interface VsiPoint {
+  date: string;
+  value: number | null;
+}
+
+export interface VsiSeriesEntry {
+  segment: string;
+  points: VsiPoint[];
+}
+
+/**
+ * `GET /api/mobile/vsi` — qode-oneview's proxy for qode360's Market Breadth
+ * indicator (web's `/review/vsi`, branch `feature/vsi-indicator`). Market-
+ * wide, not derived from this customer's own holdings — `notReady` mirrors
+ * the upstream service's own "not computed yet for this combination" state,
+ * distinct from a real fetch failure (which instead comes back as
+ * `ok: false` from `getJson`, same as every other route here).
+ */
+export interface VsiPayload {
+  series: VsiSeriesEntry[];
+  notReady: boolean;
+}
+
+export function getVsiIndicator(): Promise<ApiResult<VsiPayload>> {
+  if (isDemoActive()) return Promise.resolve({ ok: true, data: DEMO_VSI_PAYLOAD });
+  return getJson<VsiPayload>('/api/mobile/vsi');
 }

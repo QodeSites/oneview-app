@@ -6,6 +6,7 @@ import type {
   PresenceSummary,
   RealProfileData,
   ReviewPayload,
+  VsiPayload,
 } from '@/lib/reviewApi';
 
 /**
@@ -105,3 +106,35 @@ export const DEMO_PROFILE_DATA: RealProfileData = {
  * would, rather than a second, disconnected set of invented percentages.
  */
 export const DEMO_RISK_PROFILE_ANSWERS: number[] = [4, 3, 2, 4, 3, 3];
+
+/**
+ * Synthetic Market Breadth series — five deterministic bounded random walks
+ * (24 monthly points each, clamped 5-95%) rather than qode-oneview's real
+ * 10-year daily qode360 data, which demo mode has no equivalent seed for.
+ * Shape-matches `VsiPayload` field-for-field, so the VSI screen doesn't need
+ * to know this is fabricated.
+ */
+function vsiWalk(seed: number, base: number): { date: string; value: number }[] {
+  const out: { date: string; value: number }[] = [];
+  let v = base;
+  let s = seed;
+  for (let i = 0; i < 24; i++) {
+    const d = new Date(Date.UTC(2024, 8 + i, 1));
+    s = (s * 9301 + 49297) % 233280;
+    const drift = (s / 233280 - 0.5) * 8;
+    v = Math.min(95, Math.max(5, v + drift));
+    out.push({ date: d.toISOString().slice(0, 10), value: Number(v.toFixed(2)) });
+  }
+  return out;
+}
+
+export const DEMO_VSI_PAYLOAD: VsiPayload = {
+  notReady: false,
+  series: [
+    { segment: 'Top 100', points: vsiWalk(11, 38) },
+    { segment: '101-250', points: vsiWalk(23, 44) },
+    { segment: '251-500', points: vsiWalk(37, 52) },
+    { segment: '500-750', points: vsiWalk(51, 47) },
+    { segment: 'Top 750', points: vsiWalk(67, 41) },
+  ],
+};
