@@ -89,11 +89,8 @@ export default function VsiScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
           <PageHeader
             title="Valuation Spread Indicator (VSI)"
-            subtitle="Market breadth — the share of stocks in the second valuation bucket, by market-cap segment (P/B, since 2006)."
             navAsOf={latestDate}
           />
-
-          <Text style={styles.sectionTitle}>Market Breadth</Text>
 
           {notReady ? (
             <View style={styles.card}>
@@ -106,7 +103,6 @@ export default function VsiScreen() {
                   <View style={[styles.cardDot, { backgroundColor: seg.color }]} />
                   <Text style={styles.cardTitle}>{seg.label}</Text>
                 </View>
-                <Text style={styles.axisCaption}>% of stocks in bucket 2</Text>
                 <VsiChart
                   segments={[
                     {
@@ -135,11 +131,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: QodeSpace[5],
     gap: QodeSpace[3],
   },
-  sectionTitle: {
-    fontFamily: QodeFont.display,
-    fontSize: 17,
-    color: QodeColor.cream,
-  },
   card: {
     backgroundColor: QodeColor.surface,
     borderWidth: 1,
@@ -162,12 +153,6 @@ const styles = StyleSheet.create({
     fontFamily: QodeFont.display,
     fontSize: 15,
     color: QodeColor.cream,
-  },
-  axisCaption: {
-    fontFamily: QodeFont.uiRegular,
-    fontSize: 11,
-    color: QodeColor.faint,
-    marginBottom: QodeSpace[1],
   },
   status: {
     fontFamily: QodeFont.uiRegular,

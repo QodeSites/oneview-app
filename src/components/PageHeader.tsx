@@ -36,7 +36,7 @@ export function PageHeader({
   navAsOf,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   navAsOf: string | null;
 }) {
   const [pressed, setPressed] = useState(false);
@@ -45,7 +45,7 @@ export function PageHeader({
       <View style={styles.titleRow}>
         <View style={styles.titleCol}>
           <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
+          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         </View>
         <View style={styles.metaCol}>
           <Text style={styles.metaText}>
