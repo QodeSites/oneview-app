@@ -15,7 +15,11 @@ export interface VsiChartSegment {
 }
 
 const W = 1000; // viewBox units; the SVG scales to its measured container width
-const ML = 30; // left gutter for "0%"/"100%" labels
+// Left gutter for the "0%"-"100%" labels, in real pixels rather than
+// viewBox units: a fixed 3% of the viewBox was ~10px on a phone, so
+// "100%" spilled out onto the card's own border. Converted to viewBox
+// units per render once the chart's width is measured (`ML` below).
+const Y_GUTTER_PX = 34;
 const MR = 8;
 const MT = 10;
 const MB = 20; // bottom gutter for year labels
@@ -99,6 +103,7 @@ export function VsiChart({ segments, height = 240 }: { segments: VsiChartSegment
   // during render, where the React Compiler flags a ref read as unsafe).
   const widthRef = useRef(0);
   const [measuredWidth, setMeasuredWidth] = useState(0);
+  const ML = measuredWidth > 0 ? (Y_GUTTER_PX / measuredWidth) * W : 30;
 
   const { minT, maxT, lines } = useMemo(() => {
     const all = segments.flatMap((s) =>
@@ -145,7 +150,10 @@ export function VsiChart({ segments, height = 240 }: { segments: VsiChartSegment
     if (widthRef.current <= 0 || !Number.isFinite(minT) || !Number.isFinite(maxT) || minT >= maxT) return;
     const frac = localX / widthRef.current;
     const sx = frac * W;
-    const t = minT + ((sx - ML) / (W - ML - MR)) * (maxT - minT);
+    // From `widthRef`, not the render-time `ML`: the PanResponder holding
+    // this function is created once, before the first layout measures a width.
+    const ml = (Y_GUTTER_PX / widthRef.current) * W;
+    const t = minT + ((sx - ml) / (W - ml - MR)) * (maxT - minT);
     setAtT(t >= minT && t <= maxT ? t : null);
   }
 
@@ -228,7 +236,7 @@ export function VsiChart({ segments, height = 240 }: { segments: VsiChartSegment
               styles.axisLabel,
               styles.axisLabelY,
               // Anchored by `right`, not `left` — the plot's own left
-              // gutter (`ML`, 3% of the viewBox) is only wide enough for
+              // gutter (`ML`, then 3% of the viewBox) was only wide enough for
               // a 2-digit tick on a wide screen; "100%" grew past it and
               // sat on top of the lines themselves (reported 18 Sep,
               // "graph is intersecting with y axis"). `right` pins the
