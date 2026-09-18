@@ -140,7 +140,7 @@ export function AppLockProvider({ children }: { children: ReactNode }) {
     if (prompting.current) return false;
     prompting.current = true;
     try {
-      const ok = await prompt('Unlock Qode OneView');
+      const ok = await prompt('Unlock OneView');
       if (ok) setLocked(false);
       return ok;
     } finally {
