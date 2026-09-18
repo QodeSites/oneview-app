@@ -90,6 +90,7 @@ export default function VsiScreen() {
           <PageHeader
             title="Valuation Spread Indicator (VSI)"
             navAsOf={latestDate}
+            showDataBar={false}
           />
 
           {notReady ? (
