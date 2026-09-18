@@ -15,7 +15,7 @@ export function ErrorView({ message, onRetry }: { message: string; onRetry: () =
   return (
     <View style={styles.centered}>
       <Text style={styles.message}>{message}</Text>
-      <Pressable style={styles.retryButton} onPress={onRetry}>
+      <Pressable style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]} onPress={onRetry}>
         <Text style={styles.retryText}>Try again</Text>
       </Pressable>
     </View>
@@ -23,6 +23,11 @@ export function ErrorView({ message, onRetry }: { message: string; onRetry: () =
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style — this one covers
+  // every screen's "Try again" button at once, since ErrorView is shared.
+  pressed: {
+    opacity: 0.85,
+  },
   centered: {
     flex: 1,
     alignItems: 'center',

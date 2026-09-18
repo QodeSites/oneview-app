@@ -75,13 +75,13 @@ class ErrorBoundaryImpl extends Component<Props, State> {
           </Text>
           <Pressable
             accessibilityRole="button"
-            style={styles.button}
+            style={({ pressed }) => [styles.button, pressed && styles.pressed]}
             onPress={() => this.setState({ error: null })}>
             <Text style={styles.buttonText}>Try again</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            style={styles.buttonSecondary}
+            style={({ pressed }) => [styles.buttonSecondary, pressed && styles.pressed]}
             onPress={() => {
               // Only present in dev / a dev-client build — absent (and a
               // no-op via the guard) in a production release, where
@@ -92,7 +92,7 @@ class ErrorBoundaryImpl extends Component<Props, State> {
           </Pressable>
           <Pressable
             accessibilityRole="button"
-            style={styles.buttonSecondary}
+            style={({ pressed }) => [styles.buttonSecondary, pressed && styles.pressed]}
             onPress={() => {
               // Reset error state IN THE SAME action, not after — leaving
               // `error` set would keep this fallback rendering forever
@@ -131,6 +131,10 @@ export function ErrorBoundary({ children }: { children: ReactNode }) {
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
+  },
   container: {
     flex: 1,
     alignItems: 'center',

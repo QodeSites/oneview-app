@@ -145,7 +145,7 @@ export default function MfXrayScreen() {
 
 function FundCard({ fund, open, onToggle }: { fund: FundXray; open: boolean; onToggle: () => void }) {
   return (
-    <Pressable style={styles.card} onPress={onToggle}>
+    <Pressable style={({ pressed }) => [styles.card, pressed && styles.pressed]} onPress={onToggle}>
       <View style={styles.cardHead}>
         <View style={styles.cardHeadText}>
           <Text style={styles.fundName} numberOfLines={2}>
@@ -259,6 +259,10 @@ function FundCard({ fund, open, onToggle }: { fund: FundXray; open: boolean; onT
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
+  },
   container: {
     flex: 1,
   },

@@ -82,7 +82,11 @@ export default function RegisterScreen() {
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <SafeAreaView edges={['top', 'bottom']}>
             <View style={styles.headerRow}>
-              <Pressable accessibilityRole="button" hitSlop={12} onPress={() => router.replace('/login')}>
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={12}
+                onPress={() => router.replace('/login')}
+                style={({ pressed }) => pressed && styles.buttonPressed}>
                 <Text style={styles.startOver}>Start over</Text>
               </Pressable>
             </View>

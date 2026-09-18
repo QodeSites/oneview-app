@@ -123,7 +123,11 @@ export default function ReportsScreen() {
               A print-perfect PDF of everything you see in the app, generated from the same data, always in sync.
             </Text>
             <Pressable
-              style={[styles.downloadButton, downloading && styles.downloadButtonBusy]}
+              style={({ pressed }) => [
+                styles.downloadButton,
+                downloading && styles.downloadButtonBusy,
+                pressed && styles.pressed,
+              ]}
               disabled={downloading}
               onPress={() => void handleDownload()}>
               <Text style={styles.downloadButtonText}>
@@ -143,7 +147,7 @@ export default function ReportsScreen() {
               {r.contact.email} · {r.contact.phone}
             </Text>
             <Pressable
-              style={styles.callButton}
+              style={({ pressed }) => [styles.callButton, pressed && styles.pressed]}
               onPress={() => {
                 Linking.openURL(bookACallUrl(r.contact.phone, client.name)).catch(() => {});
               }}>
@@ -168,6 +172,10 @@ export default function ReportsScreen() {
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
+  },
   container: { flex: 1 },
   safeArea: { flex: 1 },
   scroll: {

@@ -105,7 +105,11 @@ export default function WelcomeScreen() {
         <View style={styles.topBar}>
           <BrandMark size={24} />
           {!last ? (
-            <Pressable accessibilityRole="button" onPress={finish} hitSlop={12}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={finish}
+              hitSlop={12}
+              style={({ pressed }) => pressed && styles.pressed}>
               <Text style={styles.skip}>Skip</Text>
             </Pressable>
           ) : null}

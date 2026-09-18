@@ -86,7 +86,11 @@ export function CountryCodePicker({ value, onChange }: { value: Country; onChang
           <View style={styles.sheet}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Choose a country</Text>
-              <Pressable accessibilityRole="button" onPress={() => setOpen(false)} hitSlop={12}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setOpen(false)}
+                hitSlop={12}
+                style={({ pressed }) => pressed && styles.pressed}>
                 <Text style={styles.closeText}>Close</Text>
               </Pressable>
             </View>
@@ -129,6 +133,10 @@ export function CountryCodePicker({ value, onChange }: { value: Country; onChang
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
+  },
   trigger: {
     flexDirection: 'row',
     alignItems: 'center',

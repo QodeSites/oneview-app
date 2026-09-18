@@ -261,7 +261,7 @@ export default function LoginScreen() {
                 {__DEV__ ? (
                   <>
                     <Pressable
-                      style={styles.demoLink}
+                      style={({ pressed }) => [styles.demoLink, pressed && styles.buttonPressed]}
                       onPress={() => {
                         void signInDemo().then(() => router.replace('/performance'));
                       }}>
@@ -269,7 +269,9 @@ export default function LoginScreen() {
                     </Pressable>
                     {/* The slides only show once per device, so testing them
                         again in Expo Go otherwise means clearing its storage. */}
-                    <Pressable style={styles.demoLink} onPress={() => router.push('/welcome')}>
+                    <Pressable
+                      style={({ pressed }) => [styles.demoLink, pressed && styles.buttonPressed]}
+                      onPress={() => router.push('/welcome')}>
                       <Text style={styles.demoLinkText}>View welcome slides (dev only)</Text>
                     </Pressable>
                   </>
@@ -311,7 +313,7 @@ export default function LoginScreen() {
                   <Text style={styles.createButtonText}>Create an account</Text>
                 </Pressable>
                 <Pressable
-                  style={styles.quietButton}
+                  style={({ pressed }) => [styles.quietButton, pressed && styles.buttonPressed]}
                   onPress={() => {
                     setStep('phone');
                     setPhone('');

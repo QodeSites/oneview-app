@@ -198,7 +198,11 @@ export default function SegmentsScreen() {
               <Pressable
                 key={s.id}
                 onPress={() => setActive(s.id)}
-                style={[styles.chip, !isOthers && sectionId === s.id && styles.chipActive]}>
+                style={({ pressed }) => [
+                  styles.chip,
+                  !isOthers && sectionId === s.id && styles.chipActive,
+                  pressed && styles.pressed,
+                ]}>
                 <Text style={[styles.chipLabel, !isOthers && sectionId === s.id && styles.chipLabelActive]}>
                   {s.label} · {shareOf(s.id).percent.toFixed(2)}%
                 </Text>
@@ -207,7 +211,9 @@ export default function SegmentsScreen() {
             {/* Others earns a chip of its own, same as web — a tab row that
                 omitted it would imply the three bands were the whole story. */}
             {others && others.value > 0 ? (
-              <Pressable onPress={() => setActive('others')} style={[styles.chip, isOthers && styles.chipActive]}>
+              <Pressable
+              onPress={() => setActive('others')}
+              style={({ pressed }) => [styles.chip, isOthers && styles.chipActive, pressed && styles.pressed]}>
                 <Text style={[styles.chipLabel, isOthers && styles.chipLabelActive]}>
                   Others · {others.percent.toFixed(2)}%
                 </Text>
@@ -552,7 +558,8 @@ function MetricTile({
           onPress={onToggleDefinition}
           hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={showDefinition ? `Hide what ${metric.label} means` : `What ${metric.label} means`}>
+          accessibilityLabel={showDefinition ? `Hide what ${metric.label} means` : `What ${metric.label} means`}
+          style={({ pressed }) => pressed && styles.pressed}>
           <Text style={styles.infoIcon}>ⓘ</Text>
         </Pressable>
       </View>
@@ -589,6 +596,10 @@ function MetricTile({
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
+  },
   container: {
     flex: 1,
   },

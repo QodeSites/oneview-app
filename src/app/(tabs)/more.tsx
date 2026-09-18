@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { Link, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { Link, useRouter, type Href } from 'expo-router';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -23,6 +23,11 @@ import { useAppLock } from '@/lib/app-lock';
 import { installedVersion } from '@/lib/app-update';
 import { useAuth } from '@/lib/auth';
 import { getProfileData } from '@/lib/reviewApi';
+import { resetWelcomeSeen } from '@/lib/welcome';
+
+/** Taps on the version number, within `VERSION_TAP_WINDOW_MS` of each other, that reset the welcome screens. */
+const VERSION_TAP_COUNT = 7;
+const VERSION_TAP_WINDOW_MS = 2500;
 
 // More is only reachable once the account is linked and its data has loaded
 // (see app-tabs.tsx's gate), so linking isn't offered here; "Upload
@@ -47,6 +52,31 @@ export default function MoreScreen() {
   const profile = useRemoteData(getProfileData);
   const [signingOut, setSigningOut] = useState(false);
 
+  // The welcome-seen flag lives in SecureStore, which on iOS is
+  // Keychain-backed and survives an app uninstall/reinstall by design —
+  // a real customer's fresh device never has it set, but a TESTER'S
+  // device does, from their last install, so the welcome screens can't
+  // be re-tested just by reinstalling (reported 18 Sep). This is that
+  // escape hatch: tap the version number seven times, quickly, to clear
+  // it and sign out, landing back on the welcome screens next launch.
+  const versionTapsRef = useRef<number[]>([]);
+  function onVersionTap() {
+    const now = Date.now();
+    const taps = versionTapsRef.current.filter((t) => now - t < VERSION_TAP_WINDOW_MS);
+    taps.push(now);
+    versionTapsRef.current = taps;
+    if (taps.length < VERSION_TAP_COUNT) return;
+    versionTapsRef.current = [];
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    void Promise.all([resetWelcomeSeen(), signOut()]).then(() => {
+      // '/', not '/login' directly — index.tsx re-reads the (now cleared)
+      // session and welcome flag and redirects to /welcome itself, so
+      // this shows the actual screens right away instead of just
+      // promising they will next launch.
+      router.replace('/');
+    });
+  }
+
   return (
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
       {/* `edges={['top']}` — the sign-out bar below already reserves the
@@ -67,7 +97,11 @@ export default function MoreScreen() {
           ) : profile.state.status === 'error' ? (
             <View style={styles.detailsPlaceholder}>
               <Text style={styles.placeholderText}>Couldn&apos;t load your details. {profile.state.message}</Text>
-              <Pressable accessibilityRole="button" onPress={profile.reload} hitSlop={8}>
+              <Pressable
+                accessibilityRole="button"
+                onPress={profile.reload}
+                hitSlop={8}
+                style={({ pressed }) => pressed && styles.pressed}>
                 <Text style={styles.placeholderAction}>Try again</Text>
               </Pressable>
             </View>
@@ -83,19 +117,14 @@ export default function MoreScreen() {
 
           <View style={styles.list}>
             {ITEMS.map((item, i) => (
-              <Link key={item.href} href={item.href} asChild>
-                {/* Link's asChild clones this via a Slot, which needs a
-                    flattened style object — an array style here throws
-                    "[expo-router]: You are passing an array of styles to a
-                    child of <Slot>." */}
-                <Pressable style={StyleSheet.flatten([styles.row, i > 0 && styles.rowDivider])}>
-                  <Text style={styles.rowLabel}>{item.label}</Text>
-                  <Text style={styles.chevron}>›</Text>
-                </Pressable>
-              </Link>
+              <MoreRow key={item.href} href={item.href} label={item.label} divider={i > 0} />
             ))}
           </View>
-          {installedVersion() ? <Text style={styles.version}>Version {installedVersion()}</Text> : null}
+          {installedVersion() ? (
+            <Pressable onPress={onVersionTap} hitSlop={12} style={({ pressed }) => pressed && styles.pressed}>
+              <Text style={styles.version}>Version {installedVersion()}</Text>
+            </Pressable>
+          ) : null}
         </ScrollView>
 
         <View style={[styles.signOutBar, { paddingBottom: tabBarHeight + QodeSpace[3] }]}>
@@ -119,6 +148,49 @@ export default function MoreScreen() {
         </View>
       </SafeAreaView>
     </LinearGradient>
+  );
+}
+
+/**
+ * One row in the destinations list. Pressed state is tracked by hand
+ * (`useState` + `onPressIn`/`onPressOut`) rather than `Pressable`'s own
+ * `style={(state) => ...}` form, deliberately: `Link`'s `asChild` clones
+ * this via a Slot, which merges an incoming `style` by concatenating it
+ * into an array — fine for a plain object, but a FUNCTION landed in that
+ * array as one of its entries, and React Native's style resolution
+ * doesn't know what to do with a function inside a style array, so the
+ * entire style silently failed to apply (no row layout, no padding, no
+ * divider — reported 18 Sep, immediately after adding the pressed-state
+ * feedback this replaces). Same fix as this comment used to warn about
+ * for an ARRAY style on a Slot child — a function has the identical
+ * problem, just not spelled out there yet. This keeps `style` a plain,
+ * already-flattened object, which Slot's array-merge handles correctly.
+ */
+function MoreRow({ href, label, divider }: { href: Href; label: string; divider: boolean }) {
+  const [pressed, setPressed] = useState(false);
+  return (
+    <Link href={href} asChild>
+      <Pressable
+        onPressIn={() => setPressed(true)}
+        onPressOut={() => setPressed(false)}
+        style={StyleSheet.flatten([styles.row, divider && styles.rowDivider, pressed && styles.pressed])}>
+        {/* `rowText` (flex: 1) — SecuritySection's own row below already
+            wraps its label the same way so its Switch never gets pushed
+            out; this row used to put the label straight in as the flex
+            row's other child, unshrinking, so a narrow phone or a larger
+            system text size overflowed the row and the chevron was
+            clipped by `list`'s own `overflow: hidden` (also reported 18
+            Sep, separately from the style-function bug above). */}
+        <View style={styles.rowText}>
+          <Text style={styles.rowLabel} numberOfLines={1} maxFontSizeMultiplier={1.3}>
+            {label}
+          </Text>
+        </View>
+        <Text style={styles.chevron} maxFontSizeMultiplier={1.3}>
+          ›
+        </Text>
+      </Pressable>
+    </Link>
   );
 }
 
@@ -171,6 +243,10 @@ function SecuritySection() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
   },
   safeArea: {
     flex: 1,

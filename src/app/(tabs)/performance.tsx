@@ -82,6 +82,13 @@ export default function PerformanceScreen() {
   const riskProfile = useRemoteData(getRiskProfileData);
   const [mixView, setMixView] = useState<'yours' | 'risk'>('yours');
   const [openBand, setOpenBand] = useState<CapBand | null>(null);
+  // Not `Pressable`'s own `style={(state) => ...}` form — the "Your risk
+  // profile →" chip below sits inside `<Link asChild>`, whose Slot merges
+  // an incoming `style` into an array, and a function landed in that
+  // array broke the whole style silently (same bug, same fix, as
+  // more.tsx's list rows and holdings.tsx's upload card, reported 18 Sep
+  // together).
+  const [riskChipPressed, setRiskChipPressed] = useState(false);
   const tabBarHeight = useTabBarHeight();
 
   if (state.status === 'loading') return <LoadingView />;
@@ -356,7 +363,7 @@ export default function PerformanceScreen() {
                     accessibilityRole="button"
                     accessibilityState={{ selected: !showRisk }}
                     onPress={() => setMixView('yours')}
-                    style={[styles.mixChip, !showRisk && styles.mixChipOn]}>
+                    style={({ pressed }) => [styles.mixChip, !showRisk && styles.mixChipOn, pressed && styles.pressed]}>
                     <Text style={[styles.mixChipText, !showRisk && styles.mixChipTextOn]}>Your mix</Text>
                   </Pressable>
                   {riskBlend ? (
@@ -364,12 +371,15 @@ export default function PerformanceScreen() {
                       accessibilityRole="button"
                       accessibilityState={{ selected: showRisk }}
                       onPress={() => setMixView('risk')}
-                      style={[styles.mixChip, showRisk && styles.mixChipOn]}>
+                      style={({ pressed }) => [styles.mixChip, showRisk && styles.mixChipOn, pressed && styles.pressed]}>
                       <Text style={[styles.mixChipText, showRisk && styles.mixChipTextOn]}>Your risk profile</Text>
                     </Pressable>
                   ) : (
                     <Link href="/risk-profile" asChild>
-                      <Pressable style={styles.mixChip}>
+                      <Pressable
+                        onPressIn={() => setRiskChipPressed(true)}
+                        onPressOut={() => setRiskChipPressed(false)}
+                        style={StyleSheet.flatten([styles.mixChip, riskChipPressed && styles.pressed])}>
                         <Text style={styles.mixChipText}>Your risk profile →</Text>
                       </Pressable>
                     </Link>
@@ -445,7 +455,7 @@ export default function PerformanceScreen() {
                     return (
                       <View key={s.band}>
                         <Pressable
-                          style={styles.legendRow}
+                          style={({ pressed }) => [styles.legendRow, pressed && styles.pressed]}
                           onPress={() => rows?.length && setOpenBand(open ? null : s.band)}>
                           <View style={[styles.legendSwatch, { backgroundColor: CapBandColor[s.band] }]} />
                           <Text style={styles.legendLabel}>
@@ -522,6 +532,10 @@ function GapFigure({ label, value, note, total }: { label: string; value: number
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
+  },
   container: { flex: 1 },
   safeArea: { flex: 1 },
   scroll: {

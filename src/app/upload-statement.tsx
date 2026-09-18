@@ -126,7 +126,11 @@ export default function UploadStatementScreen() {
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Upload a statement</Text>
-          <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={12}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            hitSlop={12}
+            style={({ pressed }) => pressed && styles.pressed}>
             <Text style={styles.headerClose}>Close</Text>
           </Pressable>
         </View>
@@ -138,7 +142,9 @@ export default function UploadStatementScreen() {
         ) : gate.status === 'error' ? (
           <View style={styles.centered}>
             <Text style={styles.message}>{gate.message}</Text>
-            <Pressable style={styles.retryButton} onPress={retryGate}>
+            <Pressable
+              style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+              onPress={retryGate}>
               <Text style={styles.retryText}>Try again</Text>
             </Pressable>
           </View>
@@ -148,7 +154,7 @@ export default function UploadStatementScreen() {
               Statement upload is not available right now. Write to us and we&apos;ll add your holdings for you.
             </Text>
             <Pressable
-              style={styles.retryButton}
+              style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
               onPress={() => {
                 Linking.openURL('mailto:investor.relations@qodeinvest.com').catch(() => {});
               }}>
@@ -253,7 +259,9 @@ function ErrorLine({ text }: { text: string }) {
 
 function LinkChip({ href, children }: { href: string; children: string }) {
   return (
-    <Pressable style={styles.linkChip} onPress={() => void Linking.openURL(href)}>
+    <Pressable
+      style={({ pressed }) => [styles.linkChip, pressed && styles.pressed]}
+      onPress={() => void Linking.openURL(href)}>
       <Text style={styles.linkChipText}>{children} →</Text>
     </Pressable>
   );
@@ -306,7 +314,10 @@ function ManualUploadForm({ onSuccess }: { onSuccess: () => void }) {
   return (
     <View style={styles.form}>
       <Text style={styles.fieldLabel}>Statement (PDF, up to 10MB)</Text>
-      <Pressable style={styles.fileField} onPress={() => void pick()} disabled={busy}>
+      <Pressable
+        style={({ pressed }) => [styles.fileField, pressed && styles.pressed]}
+        onPress={() => void pick()}
+        disabled={busy}>
         <Text style={file ? styles.fileFieldValue : styles.fileFieldPlaceholder} numberOfLines={1}>
           {file ? file.name : 'Choose a PDF'}
         </Text>
@@ -328,7 +339,7 @@ function ManualUploadForm({ onSuccess }: { onSuccess: () => void }) {
       <ErrorLine text={error} />
 
       <Pressable
-        style={[styles.submit, (!file || busy) && styles.submitOff]}
+        style={({ pressed }) => [styles.submit, (!file || busy) && styles.submitOff, pressed && styles.pressed]}
         disabled={!file || busy}
         onPress={() => void submit()}>
         <Text style={[styles.submitText, (!file || busy) && styles.submitTextOff]}>
@@ -403,7 +414,7 @@ function CamsRequestSection({ onSuccess }: { onSuccess: () => void }) {
       />
       <ErrorLine text={error} />
       <Pressable
-        style={[styles.submit, (!canSubmit || busy) && styles.submitOff]}
+        style={({ pressed }) => [styles.submit, (!canSubmit || busy) && styles.submitOff, pressed && styles.pressed]}
         disabled={!canSubmit || busy}
         onPress={() => void send()}>
         <Text style={[styles.submitText, (!canSubmit || busy) && styles.submitTextOff]}>
@@ -412,7 +423,9 @@ function CamsRequestSection({ onSuccess }: { onSuccess: () => void }) {
       </Pressable>
       <Text style={styles.hint}>We fill the camsonline form for you; the PDF goes only to your email.</Text>
 
-      <Pressable onPress={() => setShowUpload((v) => !v)} style={styles.disclosure}>
+      <Pressable
+        onPress={() => setShowUpload((v) => !v)}
+        style={({ pressed }) => [styles.disclosure, pressed && styles.pressed]}>
         <Text style={styles.disclosureText}>{showUpload ? 'Hide upload' : 'Got the PDF? Upload it here'}</Text>
       </Pressable>
       {showUpload ? <ManualUploadForm onSuccess={onSuccess} /> : null}
@@ -502,7 +515,11 @@ function CdslFetchSection({ onSuccess }: { onSuccess: () => void }) {
         />
         <ErrorLine text={error} />
         <Pressable
-          style={[styles.submit, (busy || otp.length < 4) && styles.submitOff]}
+          style={({ pressed }) => [
+            styles.submit,
+            (busy || otp.length < 4) && styles.submitOff,
+            pressed && styles.pressed,
+          ]}
           disabled={busy || otp.length < 4}
           onPress={() => void verify()}>
           <Text style={[styles.submitText, (busy || otp.length < 4) && styles.submitTextOff]}>
@@ -580,7 +597,7 @@ function CdslFetchSection({ onSuccess }: { onSuccess: () => void }) {
       <ErrorLine text={error} />
 
       <Pressable
-        style={[styles.submit, (!canStart || busy) && styles.submitOff]}
+        style={({ pressed }) => [styles.submit, (!canStart || busy) && styles.submitOff, pressed && styles.pressed]}
         disabled={!canStart || busy}
         onPress={() => void start()}>
         <Text style={[styles.submitText, (!canStart || busy) && styles.submitTextOff]}>
@@ -591,7 +608,9 @@ function CdslFetchSection({ onSuccess }: { onSuccess: () => void }) {
         CDSL sends a code to your registered phone; nothing is changed or moved — this only reads your statement.
       </Text>
 
-      <Pressable onPress={() => setShowUpload((v) => !v)} style={styles.disclosure}>
+      <Pressable
+        onPress={() => setShowUpload((v) => !v)}
+        style={({ pressed }) => [styles.disclosure, pressed && styles.pressed]}>
         <Text style={styles.disclosureText}>
           {showUpload ? 'Hide upload' : 'Or upload the PDF yourself (NSDL or CDSL)'}
         </Text>
@@ -622,6 +641,10 @@ function ForwardEmailNote({ address, copied, onCopy }: { address: string; copied
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
+  },
   container: { flex: 1 },
   safeArea: { flex: 1 },
   header: {

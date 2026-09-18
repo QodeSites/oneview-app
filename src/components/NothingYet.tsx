@@ -39,7 +39,7 @@ export function NothingYet({ presence }: { presence: PresenceSummary }) {
             : 'We read the accounts you linked and they reported no holdings. That is a real answer, not a failure — it happens when the linked accounts are empty, or when the holdings sit with an institution that hasn’t been linked yet.'}
         </Text>
         <Pressable
-          style={styles.button}
+          style={({ pressed }) => [styles.button, pressed && styles.pressed]}
           onPress={() => {
             if (neverAsked) router.push('/link');
             else router.push({ pathname: '/link', params: { force: '1' } });
@@ -52,6 +52,10 @@ export function NothingYet({ presence }: { presence: PresenceSummary }) {
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
+  },
   container: {
     flex: 1,
     alignItems: 'center',

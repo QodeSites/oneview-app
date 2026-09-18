@@ -106,7 +106,10 @@ export function UpdatePrompt() {
           </ScrollView>
           <View style={styles.sheetActions}>
             {updateButton}
-            <Pressable accessibilityRole="button" style={styles.quiet} onPress={later}>
+            <Pressable
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.quiet, pressed && styles.pressed]}
+              onPress={later}>
               <Text style={styles.quietText}>Later</Text>
             </Pressable>
           </View>

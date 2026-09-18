@@ -140,7 +140,7 @@ export function AnalysisBuilding({ analysis }: { analysis: AnalysisState }) {
               message us and we&apos;ll look into it.
             </Text>
             <Pressable
-              style={styles.linkAgainButton}
+              style={({ pressed }) => [styles.linkAgainButton, pressed && styles.pressed]}
               onPress={() => openWhatsApp("Hi, my OneView dashboard is still building and I need a hand.")}>
               <Text style={styles.linkAgainButtonText}>Message us on WhatsApp</Text>
             </Pressable>
@@ -165,7 +165,7 @@ function AggregatorTrouble({ elapsedSeconds }: { elapsedSeconds: number }) {
           updates on its own the moment it arrives.
         </Text>
         <Pressable
-          style={styles.whatsappButton}
+          style={({ pressed }) => [styles.whatsappButton, pressed && styles.pressed]}
           onPress={() => {
             const text = "Hi, my OneView data hasn't come through and I need a hand.";
             Linking.openURL(`https://wa.me/${CONTACT_PHONE.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`).catch(
@@ -181,7 +181,7 @@ function AggregatorTrouble({ elapsedSeconds }: { elapsedSeconds: number }) {
             waiting, and there was no way back into the linking journey to
             try again or add a different one, only a support contact. */}
         <Pressable
-          style={styles.linkAgainButton}
+          style={({ pressed }) => [styles.linkAgainButton, pressed && styles.pressed]}
           onPress={() => router.push({ pathname: '/link', params: { force: '1' } })}>
           <Text style={styles.linkAgainButtonText}>Link another account</Text>
         </Pressable>
@@ -200,6 +200,10 @@ function AggregatorTrouble({ elapsedSeconds }: { elapsedSeconds: number }) {
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
+  },
   container: {
     flex: 1,
     alignItems: 'center',

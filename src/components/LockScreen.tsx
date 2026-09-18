@@ -60,7 +60,7 @@ export function LockScreen() {
             <Pressable
               accessibilityRole="button"
               disabled={signingOut}
-              style={styles.quiet}
+              style={({ pressed }) => [styles.quiet, pressed && styles.pressed]}
               onPress={() => {
                 setSigningOut(true);
                 void clearLock()

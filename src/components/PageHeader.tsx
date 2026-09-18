@@ -1,4 +1,5 @@
 import { Link } from 'expo-router';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { QodeColor, QodeFont, QodeSpace } from '@/constants/qode-theme';
@@ -38,6 +39,7 @@ export function PageHeader({
   subtitle: string;
   navAsOf: string | null;
 }) {
+  const [pressed, setPressed] = useState(false);
   return (
     <View style={styles.container}>
       <View style={styles.titleRow}>
@@ -53,7 +55,21 @@ export function PageHeader({
       </View>
 
       <Link href="/upload-statement" asChild>
-        <Pressable style={styles.dataBar}>
+        {/* Link's asChild clones this via a Slot, which merges an
+            incoming `style` by concatenating it into an array — fine for
+            a plain object, but a FUNCTION style (tried here first, for
+            the pressed-state dim) landed in that array as one of its
+            entries, and RN's style resolution can't do anything with a
+            function inside a style array: the whole style silently
+            failed to apply — no padding, no background, no rounded
+            corners (reported 18 Sep, on more.tsx's identically-broken
+            list rows — same fix there). Tracking `pressed` by hand keeps
+            this a plain, already-flattened object, which Slot's
+            array-merge handles fine. */}
+        <Pressable
+          onPressIn={() => setPressed(true)}
+          onPressOut={() => setPressed(false)}
+          style={StyleSheet.flatten([styles.dataBar, pressed && styles.pressed])}>
           <Text style={styles.dataBarText}>
             Data looks incomplete? Upload your CAMS/KFin or NSDL/CDSL statement →
           </Text>
@@ -64,6 +80,10 @@ export function PageHeader({
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
+  },
   container: {
     gap: QodeSpace[3],
   },

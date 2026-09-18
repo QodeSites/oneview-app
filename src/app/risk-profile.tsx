@@ -195,7 +195,9 @@ function RiskProfileBody({
             <View style={styles.card}>
               <Text style={styles.cardTitle}>Your answers are saved</Text>
               <Text style={styles.completeBody}>The recommendation below is built from them.</Text>
-              <Pressable style={styles.editButton} onPress={() => setEditing(true)}>
+              <Pressable
+                style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}
+                onPress={() => setEditing(true)}>
                 <Text style={styles.editButtonText}>Edit my answers</Text>
               </Pressable>
             </View>
@@ -225,7 +227,7 @@ function RiskProfileBody({
                         <Pressable
                           key={label}
                           onPress={() => pick(i, value)}
-                          style={[styles.pill, on && styles.pillOn]}>
+                          style={({ pressed }) => [styles.pill, on && styles.pillOn, pressed && styles.pressed]}>
                           <Text style={[styles.pillText, on && styles.pillTextOn]}>{label}</Text>
                         </Pressable>
                       );
@@ -237,7 +239,9 @@ function RiskProfileBody({
               {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
               <View style={styles.foot}>
-                <Pressable onPress={analyse} style={[styles.submit, !allAnswered && styles.submitOff]}>
+                <Pressable
+                  onPress={analyse}
+                  style={({ pressed }) => [styles.submit, !allAnswered && styles.submitOff, pressed && styles.pressed]}>
                   <Text style={[styles.submitText, !allAnswered && styles.submitTextOff]}>
                     {show ? 'Save & update my recommendation' : 'Analyze my answers'}
                   </Text>
@@ -303,6 +307,10 @@ function AllocationCard({
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
+  },
   container: { flex: 1 },
   safeArea: { flex: 1 },
   scroll: {

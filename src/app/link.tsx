@@ -227,7 +227,11 @@ export default function LinkAccountsScreen() {
               own multi-step FinVU journey has its own internal navigation
               (Open Question #3 in the spec); this native chrome should not
               also offer a "back" that fights it. */}
-          <Pressable accessibilityRole="button" onPress={() => router.back()} hitSlop={12}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.back()}
+            hitSlop={12}
+            style={({ pressed }) => pressed && styles.pressed}>
             <Text style={styles.close}>Close</Text>
           </Pressable>
         </View>
@@ -241,7 +245,9 @@ export default function LinkAccountsScreen() {
                 <Text style={styles.message}>
                   This phone is already linked. Head back to your dashboard, or link another account.
                 </Text>
-                <Pressable style={styles.retryButton} onPress={() => router.replace('/performance')}>
+                <Pressable
+                  style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+                  onPress={() => router.replace('/performance')}>
                   <Text style={styles.retryText}>Go to dashboard</Text>
                 </Pressable>
                 <Pressable
@@ -255,14 +261,17 @@ export default function LinkAccountsScreen() {
                     // would still be set from whatever attempt led here.
                     retriedRef.current = false;
                     setForceLink(true);
-                  }}>
+                  }}
+                  style={({ pressed }) => pressed && styles.pressed}>
                   <Text style={styles.linkAnother}>Link another account</Text>
                 </Pressable>
               </>
             ) : (
               <>
                 <Text style={styles.errorText}>{error}</Text>
-                <Pressable style={styles.retryButton} onPress={() => void start()}>
+                <Pressable
+                  style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
+                  onPress={() => void start()}>
                   <Text style={styles.retryText}>Try again</Text>
                 </Pressable>
               </>
@@ -295,6 +304,10 @@ export default function LinkAccountsScreen() {
 }
 
 const styles = StyleSheet.create({
+  // See holdings.tsx's own comment on this shared style.
+  pressed: {
+    opacity: 0.85,
+  },
   container: {
     flex: 1,
   },

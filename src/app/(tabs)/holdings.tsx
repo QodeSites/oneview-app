@@ -122,6 +122,13 @@ export default function HoldingsScreen() {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>({ key: 'value', dir: -1 });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Not `Pressable`'s own `style={(state) => ...}` form — the upload card
+  // below sits inside `<Link asChild>`, whose Slot merges an incoming
+  // `style` into an array, and a function landed in that array broke the
+  // whole style silently (no card look at all — same bug, same fix, as
+  // more.tsx's list rows and PageHeader's own data-incomplete bar,
+  // reported 18 Sep together).
+  const [uploadCardPressed, setUploadCardPressed] = useState(false);
   const tabBarHeight = useTabBarHeight();
 
   // Bank balances aren't holdings — they stay in the portfolio total but
@@ -215,7 +222,10 @@ export default function HoldingsScreen() {
           {SORT_COLUMNS.map((col) => {
             const active = sort.key === col.key;
             return (
-              <Pressable key={col.key} onPress={() => setSortKey(col.key)} style={styles.sortChip}>
+              <Pressable
+                key={col.key}
+                onPress={() => setSortKey(col.key)}
+                style={({ pressed }) => [styles.sortChip, pressed && styles.pressed]}>
                 <Text style={[styles.sortChipText, active && styles.sortChipTextActive]} maxFontSizeMultiplier={1.3}>
                   {col.label}
                   {active ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
@@ -247,7 +257,10 @@ export default function HoldingsScreen() {
               separate destination. */}
           {state.data.casUploadEnabled && (!state.data.have.funds || !state.data.have.shares) ? (
             <Link href="/upload-statement" asChild>
-              <Pressable style={styles.uploadCard}>
+              <Pressable
+                onPressIn={() => setUploadCardPressed(true)}
+                onPressOut={() => setUploadCardPressed(false)}
+                style={StyleSheet.flatten([styles.uploadCard, uploadCardPressed && styles.pressed])}>
                 <Text style={styles.uploadCardTitle}>Data looks incomplete?</Text>
                 <Text style={styles.uploadCardBody}>
                   Upload your CAMS/KFin or NSDL/CDSL statement — or fetch it straight from CDSL, no PDF needed.
@@ -319,7 +332,9 @@ function countByType(holdings: Holding[]) {
 
 function FilterChip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.chip, active && styles.chipActive, pressed && styles.pressed]}>
       {/* The row has a fixed height (see chipsRow), so very large system
           text is capped here rather than clipped. */}
       <Text style={[styles.chipLabel, active && styles.chipLabelActive]} maxFontSizeMultiplier={1.3}>
@@ -331,7 +346,7 @@ function FilterChip({ label, active, onPress }: { label: string; active: boolean
 
 function HoldingRow({ holding: h, open, onToggle }: { holding: Holding; open: boolean; onToggle: () => void }) {
   return (
-    <Pressable style={styles.row} onPress={onToggle}>
+    <Pressable style={({ pressed }) => [styles.row, pressed && styles.pressed]} onPress={onToggle}>
       <View style={styles.rowTop}>
         <View style={styles.rowNameCol}>
           <Text style={styles.rowName} numberOfLines={1}>
@@ -381,6 +396,12 @@ function DrawerField({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  // Shared by every Pressable on this screen — a plain `Pressable` (unlike
+  // `TouchableOpacity`) gives no visual feedback on tap at all by default,
+  // most noticeably on iOS (asked for across the whole app, 18 Sep).
+  pressed: {
+    opacity: 0.85,
   },
   safeArea: {
     flex: 1,
