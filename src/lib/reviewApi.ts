@@ -5,8 +5,10 @@ import {
   DEMO_PERFORMANCE_PAYLOAD,
   DEMO_PROFILE_DATA,
   DEMO_RISK_PROFILE_ANSWERS,
+  DEMO_REVIEW_FETCH_FAILED_PAYLOAD,
   DEMO_REVIEW_PAYLOAD,
   DEMO_VSI_PAYLOAD,
+  getDemoScenario,
   isDemoActive,
 } from '@/lib/demo';
 import { mockReviewData, type ReviewData, type Series, type WealthGap } from '@/lib/mock-data';
@@ -185,7 +187,10 @@ export interface ReviewPayload {
 }
 
 export function getReview(): Promise<ApiResult<ReviewPayload>> {
-  if (isDemoActive()) return Promise.resolve({ ok: true, data: DEMO_REVIEW_PAYLOAD });
+  if (isDemoActive()) {
+    const payload = getDemoScenario() === 'fetch-failed' ? DEMO_REVIEW_FETCH_FAILED_PAYLOAD : DEMO_REVIEW_PAYLOAD;
+    return Promise.resolve({ ok: true, data: payload });
+  }
   return getJson<ReviewPayload>('/api/mobile/review');
 }
 
