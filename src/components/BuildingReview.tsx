@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -17,10 +17,15 @@ import type { AnalysisState, BuildingState } from '@/lib/reviewApi';
  * the real copy's own reasoning: a straight answer, not an apology, naming
  * the actual registrars (CAMS/KFin/NSDL/CDSL) rather than "your providers".
  *
- * NOT ported: the CasUpload fallback web offers alongside the WhatsApp
- * link (web embeds the whole widget inline here). Tried on mobile as a
- * link to its own `/upload-statement` screen (18 Sep), then removed
- * again the same day — not the right fit for this screen after all.
+ * The CasUpload fallback web offers alongside the WhatsApp link — web
+ * embeds the whole widget inline; mobile links to its own dedicated
+ * `/upload-statement` screen instead. Added 18 Sep, removed same day,
+ * added back 19 Sep after a real reproduction confirmed why it belongs
+ * here: with only "Link another account," a Finvu fetch that keeps
+ * failing is a genuine dead end — re-linking just repeats the same
+ * failure, since the underlying AA delivery issue is what's broken, not
+ * the consent. Upload is the one action here that doesn't depend on
+ * that network at all.
  *
  * There is no polling here the way the web version's `router.refresh()`
  * interval has — `app-tabs.tsx`'s own `useRemoteData` re-fetches on
@@ -157,6 +162,7 @@ function AggregatorTrouble({ elapsedSeconds }: { elapsedSeconds: number }) {
   const router = useRouter();
   const minutes = Math.floor(elapsedSeconds / 60);
   const seconds = elapsedSeconds % 60;
+  const [uploadPressed, setUploadPressed] = useState(false);
 
   return (
     <View style={styles.container}>
@@ -176,6 +182,19 @@ function AggregatorTrouble({ elapsedSeconds }: { elapsedSeconds: number }) {
           }}>
           <Text style={styles.whatsappButtonText}>Message us on WhatsApp</Text>
         </Pressable>
+        {/* The actual fix, not just a way to ask for one — CAMS/KFin/NSDL/
+            CDSL not delivering doesn't stop a statement upload from
+            working; it's a completely separate path to the same data,
+            and the one action here that doesn't route back through the
+            same network that's already failing. */}
+        <Link href="/upload-statement" asChild>
+          <Pressable
+            onPressIn={() => setUploadPressed(true)}
+            onPressOut={() => setUploadPressed(false)}
+            style={StyleSheet.flatten([styles.linkAgainButton, uploadPressed && styles.pressed])}>
+            <Text style={styles.linkAgainButtonText}>Upload your holdings instead</Text>
+          </Pressable>
+        </Link>
         {/* Missing entirely until now (reported 16 Sep): someone who backed
             out of `/link` before finishing (its own "Close" button, or the
             OS back gesture) can land here with a consent that's valid but
