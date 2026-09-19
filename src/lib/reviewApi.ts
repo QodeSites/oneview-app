@@ -13,6 +13,7 @@ import {
 } from '@/lib/demo';
 import { mockReviewData, type ReviewData, type Series, type WealthGap } from '@/lib/mock-data';
 import { notifySessionExpired } from '@/lib/session-events';
+import type { ServerRecommendation } from '@/lib/strategy-scoring';
 
 /**
  * Real calls to qode-oneview's new, read-only `GET /api/mobile/*` routes
@@ -33,13 +34,25 @@ import { notifySessionExpired } from '@/lib/session-events';
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: string };
 
 async function getJson<T>(path: string): Promise<ApiResult<T>> {
+  return getJsonBody<T, T>(path, (body) => body.data);
+}
+
+/**
+ * Like `getJson`, but lets a caller read fields beside `data` — e.g.
+ * `/api/mobile/risk-profile`'s server-computed `recommendation`. `select`
+ * returning `undefined` counts as "no data", exactly as `getJson` does.
+ */
+async function getJsonBody<T, D>(
+  path: string,
+  select: (body: { data?: D } & Record<string, unknown>) => T | undefined,
+): Promise<ApiResult<T>> {
   let res: Response;
   try {
     res = await fetchWithTimeout(`${getApiBaseUrl()}${path}`, { method: 'GET', credentials: 'include' });
   } catch {
     return { ok: false, error: 'Could not reach the server. Check your connection and try again.' };
   }
-  const body = (await res.json().catch(() => ({}))) as { data?: T; error?: string };
+  const body = (await res.json().catch(() => ({}))) as { data?: D; error?: string } & Record<string, unknown>;
   // Every route here requires a real session (qode-oneview's `requireSession()`).
   // A 401 means the server-side session cookie is gone even though this
   // device's local `session` flag still says signed-in — e.g. the server
@@ -52,10 +65,11 @@ async function getJson<T>(path: string): Promise<ApiResult<T>> {
   if (!res.ok || body.error) {
     return { ok: false, error: body.error ?? describeHttpError(res.status) };
   }
-  if (body.data === undefined) {
+  const selected = select(body);
+  if (selected === undefined) {
     return { ok: false, error: 'The server did not return any data.' };
   }
-  return { ok: true, data: body.data };
+  return { ok: true, data: selected };
 }
 
 export interface PerformancePayload {
@@ -230,9 +244,26 @@ export function getProfileData(): Promise<ApiResult<RealProfileData | null>> {
  * nothing's been saved yet. Confirmed against `src/features/review/
  * strategy-answers.ts` and the route it backs, `/api/mobile/risk-profile`.
  */
-export function getRiskProfileData(): Promise<ApiResult<number[] | null>> {
-  if (isDemoActive()) return Promise.resolve({ ok: true, data: DEMO_RISK_PROFILE_ANSWERS });
-  return getJson<number[] | null>('/api/mobile/risk-profile');
+export interface RiskProfilePayload {
+  answers: number[] | null;
+  /**
+   * qode-oneview's own scoring of `answers` (src/features/review/
+   * strategy-recommendation.ts — the website's functions). `null` in demo
+   * mode, for an older server, or when nothing's saved; screens then fall
+   * back to local scoring via `resolveRecommendation` (strategy-scoring.ts).
+   */
+  recommendation: ServerRecommendation | null;
+}
+
+export function getRiskProfileData(): Promise<ApiResult<RiskProfilePayload>> {
+  if (isDemoActive()) {
+    return Promise.resolve({ ok: true, data: { answers: DEMO_RISK_PROFILE_ANSWERS, recommendation: null } });
+  }
+  return getJsonBody<RiskProfilePayload, number[] | null>('/api/mobile/risk-profile', (body) =>
+    body.data === undefined
+      ? undefined
+      : { answers: body.data, recommendation: (body.recommendation as ServerRecommendation | null | undefined) ?? null },
+  );
 }
 
 export interface VsiPoint {
