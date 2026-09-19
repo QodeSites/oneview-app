@@ -9,7 +9,8 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "channel": "development"
     },
     "preview": {
       "distribution": "internal",
@@ -23,7 +24,8 @@
       },
       "android": {
         "buildType": "apk"
-      }
+      },
+      "channel": "preview"
     },
     "preview-simulator": {
       "extends": "preview",
@@ -40,7 +42,8 @@
         "EXPO_PUBLIC_SENTRY_DSN": "https://14d0d72f240dcb58f3540515d668b2de@sentry.qodeinvest.com/3",
         "SENTRY_DISABLE_AUTO_UPLOAD": "true",
         "EXPO_PUBLIC_APP_ENV": "production"
-      }
+      },
+      "channel": "production"
     },
     "telemetry-selftest": {
       "extends": "preview-simulator",

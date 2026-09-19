@@ -19,6 +19,13 @@ export interface AppRelease {
   minimumVersion: string;
   releaseNotes: string[];
   storeUrl: { ios: string | null; android: string };
+  /**
+   * Optional, per platform: the lowest native build number (iOS build /
+   * Android versionCode) still allowed to run. Unlike `minimumVersion`, this
+   * can retire one bad build while the version name stays the same (every
+   * TestFlight build so far is "1.0.0"). Absent or null = no build gate.
+   */
+  minimumBuild?: { ios?: number | null; android?: number | null };
 }
 
 export type UpdateStatus =
@@ -55,6 +62,11 @@ export async function checkForUpdate(): Promise<UpdateStatus> {
   const notes = Array.isArray(release.releaseNotes) ? release.releaseNotes : [];
 
   if (compareVersions(current, release.minimumVersion) < 0) {
+    return { kind: 'required', latest: release.latestVersion, notes };
+  }
+  const minBuild = Platform.OS === 'ios' || Platform.OS === 'android' ? release.minimumBuild?.[Platform.OS] : null;
+  const build = Number(Application.nativeBuildVersion);
+  if (typeof minBuild === 'number' && Number.isFinite(build) && build < minBuild) {
     return { kind: 'required', latest: release.latestVersion, notes };
   }
   if (compareVersions(current, release.latestVersion) < 0) {

@@ -47,6 +47,11 @@ export interface TelemetryEvents {
 let posthog: PostHog | null = null;
 let initialised = false;
 
+/** The shared PostHog client (null in dev/web or when unconfigured) — for feature flags (remote-flags.ts). */
+export function getPostHog(): PostHog | null {
+  return posthog;
+}
+
 function linkSentryToPostHog(): void {
   try {
     if (posthog) Sentry.setTag('posthog_distinct_id', posthog.getDistinctId());
