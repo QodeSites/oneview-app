@@ -11,6 +11,7 @@ import { useRemoteData } from '@/hooks/use-remote-data';
 import { saveStrategyAnswers } from '@/lib/api';
 import { getRiskProfileData } from '@/lib/reviewApi';
 import { calculateScores, calculateTopTwo, type Scored } from '@/lib/strategy-scoring';
+import { track } from '@/lib/telemetry';
 
 interface Question {
   question: string;
@@ -160,9 +161,12 @@ function RiskProfileBody({
       return;
     }
     const all = calculateScores(answers);
+    const recommended = calculateTopTwo(all);
     setScores(all);
-    setTopTwo(calculateTopTwo(all));
+    setTopTwo(recommended);
     setShow(true);
+    // risk_band = the top recommended strategy (QAW / QTF / QGF) — this questionnaire's own outcome.
+    track('risk_profile_completed', { risk_band: recommended[0]?.code ?? 'unknown' });
     setEditing(false);
     setSaving(true);
     // Re-check only once the save has landed, so the server echoes the new

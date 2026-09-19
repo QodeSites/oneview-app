@@ -14,7 +14,12 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://oneview.qodeinvest.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://oneview.qodeinvest.com",
+        "EXPO_PUBLIC_POSTHOG_KEY": "phc_wQnwccKtanTqhcmGuH4mWmsFgBBop8v2x4p8BUTUVtbp",
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://posthog.qodeinvest.com",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://14d0d72f240dcb58f3540515d668b2de@sentry.qodeinvest.com/3",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "EXPO_PUBLIC_APP_ENV": "preview"
       },
       "android": {
         "buildType": "apk"
@@ -29,7 +34,18 @@
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://oneview.qodeinvest.com"
+        "EXPO_PUBLIC_API_BASE_URL": "https://oneview.qodeinvest.com",
+        "EXPO_PUBLIC_POSTHOG_KEY": "phc_wQnwccKtanTqhcmGuH4mWmsFgBBop8v2x4p8BUTUVtbp",
+        "EXPO_PUBLIC_POSTHOG_HOST": "https://posthog.qodeinvest.com",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://14d0d72f240dcb58f3540515d668b2de@sentry.qodeinvest.com/3",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
+        "EXPO_PUBLIC_APP_ENV": "production"
+      }
+    },
+    "telemetry-selftest": {
+      "extends": "preview-simulator",
+      "env": {
+        "EXPO_PUBLIC_TELEMETRY_SELFTEST": "1"
       }
     }
   },

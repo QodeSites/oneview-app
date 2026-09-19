@@ -54,7 +54,16 @@
           "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID to lock and unlock your portfolio."
         }
       ],
-      "./plugins/with-scene-lifecycle"
+      "./plugins/with-scene-lifecycle",
+      [
+        "@sentry/react-native",
+        {
+          "url": "https://sentry.qodeinvest.com/",
+          "organization": "sentry",
+          "project": "qode-app"
+        }
+      ],
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,

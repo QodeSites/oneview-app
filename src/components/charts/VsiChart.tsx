@@ -1,9 +1,9 @@
 import { useMemo, useRef, useState } from 'react';
-import { Line, Polyline, Svg } from 'react-native-svg';
+import { Line, Polyline, Rect, Svg } from 'react-native-svg';
 import { LayoutChangeEvent, PanResponder, StyleSheet, Text, View } from 'react-native';
 
 import { QodeColor, QodeFont } from '@/constants/qode-theme';
-import { dayLabel } from '@/lib/format';
+import { dayLabel, monthLabel } from '@/lib/format';
 
 export interface VsiChartSegment {
   key: string;
@@ -23,7 +23,25 @@ const Y_GUTTER_PX = 34;
 const MR = 8;
 const MT = 10;
 const MB = 20; // bottom gutter for year labels
-const Y_TICKS = [0, 25, 50, 75, 100];
+const Y_TICKS = [0, 20, 40, 60, 80, 100];
+/**
+ * Risk zones behind the line, in the exact shades of qode360's own VSI
+ * chart (/dashboard/research/indicator; sampled from its rendered pixels,
+ * 19 Sep, since that source isn't in this repo): pink above 50 = expensive
+ * ("Risk OFF"), green below = cheap ("Risk ON").
+ */
+const BANDS = [
+  { from: 70, to: 100, color: '#F5BFC9' },
+  { from: 50, to: 70, color: '#FEE5E9' },
+  { from: 30, to: 50, color: '#E5F3EF' },
+  { from: 0, to: 30, color: '#BDEAD2' },
+];
+/** qode360's own series color — the app's segment colors (gold, pastels) wash out on these light bands. */
+const LINE_COLOR = '#003F28';
+// Darker than qode360's own label reds/greens (#D8494A / #4FA96F), which
+// read at ~2.7:1 on the bands; these clear ~4:1 at phone font sizes.
+const RISK_OFF_TEXT = '#B42318';
+const RISK_ON_TEXT = '#1E7B45';
 /**
  * Points per line above this are downsampled — a smooth 10-year daily
  * series (2,500+ points × 5 segments) reads identically at this density on
@@ -94,7 +112,16 @@ function nearestPoint<T extends { t: number }>(pts: T[], targetT: number): T | n
  * both platforms), so "the rest, dimmed" no longer describes anything:
  * `vsi.tsx` only ever passes the segments actually selected.
  */
-export function VsiChart({ segments, height = 240 }: { segments: VsiChartSegment[]; height?: number }) {
+export function VsiChart({
+  segments,
+  height = 240,
+  zoneLabel,
+}: {
+  segments: VsiChartSegment[];
+  height?: number;
+  /** Names the zones, e.g. "Large Cap" → "Risk OFF: Underweight Large Cap". Omitted → no zone labels. */
+  zoneLabel?: string;
+}) {
   const [atT, setAtT] = useState<number | null>(null);
   // Both a ref and state tracking the same measured width, deliberately —
   // see NavChart's own comment on this exact pattern (`widthRef` for the
@@ -125,6 +152,27 @@ export function VsiChart({ segments, height = 240 }: { segments: VsiChartSegment
 
   const yearTicks = useMemo(() => {
     if (!Number.isFinite(minT) || !Number.isFinite(maxT) || minT >= maxT) return [];
+    // Short windows (the 1Y / 2Y period filters) span only one or two
+    // 1 Jan boundaries, so they get month ticks instead of year ticks.
+    const spanDays = (maxT - minT) / 86_400_000;
+    if (spanDays < 3 * 365) {
+      const stepMonths = spanDays <= 400 ? 3 : 6;
+      const end = new Date(maxT);
+      let yr = end.getUTCFullYear();
+      let mo = end.getUTCMonth() - (end.getUTCMonth() % stepMonths);
+      const months: { t: number; label: string }[] = [];
+      for (;;) {
+        const t = Date.UTC(yr, mo, 1);
+        if (t < minT) break;
+        if (t <= maxT) months.unshift({ t, label: monthLabel(new Date(t).toISOString()) });
+        mo -= stepMonths;
+        if (mo < 0) {
+          mo += 12;
+          yr -= 1;
+        }
+      }
+      return months;
+    }
     const startYear = new Date(minT).getUTCFullYear();
     const endYear = new Date(maxT).getUTCFullYear();
     const span = endYear - startYear + 1;
@@ -198,16 +246,39 @@ export function VsiChart({ segments, height = 240 }: { segments: VsiChartSegment
   return (
     <View style={{ height }} onLayout={onLayout} {...panResponder.panHandlers}>
       <Svg width="100%" height={height} viewBox={`0 0 ${W} ${height}`} preserveAspectRatio="none">
-        {Y_TICKS.map((t) => (
-          <Line key={t} x1={ML} x2={W - MR} y1={y(t)} y2={y(t)} stroke={QodeColor.divider} strokeWidth={1} />
+        {BANDS.map((b) => (
+          <Rect key={b.from} x={ML} y={y(b.to)} width={W - MR - ML} height={y(b.from) - y(b.to)} fill={b.color} />
         ))}
+        {[20, 80].map((t) => (
+          <Line
+            key={t}
+            x1={ML}
+            x2={W - MR}
+            y1={y(t)}
+            y2={y(t)}
+            stroke={QodeColor.gold}
+            strokeWidth={1}
+            strokeDasharray="2 3"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
+        <Line
+          x1={ML}
+          x2={W - MR}
+          y1={y(50)}
+          y2={y(50)}
+          stroke="#000B02"
+          strokeWidth={1.5}
+          strokeDasharray="6 4"
+          vectorEffect="non-scaling-stroke"
+        />
         {lines.map((s) => (
           <Polyline
             key={s.key}
             points={s.pts.map((p) => `${x(p.t).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ')}
             fill="none"
-            stroke={s.color}
-            strokeWidth={2}
+            stroke={LINE_COLOR}
+            strokeWidth={1.5}
             // Real pixels regardless of the viewBox's scale-down factor —
             // same fix NavChart needed for the identical reason (see its
             // own comment on this prop).
@@ -220,7 +291,7 @@ export function VsiChart({ segments, height = 240 }: { segments: VsiChartSegment
             x2={x(atT)}
             y1={MT}
             y2={height - MB}
-            stroke={QodeColor.controlBorder}
+            stroke={LINE_COLOR}
             strokeWidth={1}
             vectorEffect="non-scaling-stroke"
           />
@@ -248,6 +319,22 @@ export function VsiChart({ segments, height = 240 }: { segments: VsiChartSegment
             {t}%
           </Text>
         ))}
+        {zoneLabel ? (
+          <>
+            <Text
+              maxFontSizeMultiplier={1.2}
+              numberOfLines={1}
+              style={[styles.zoneLabel, { color: RISK_OFF_TEXT, left: `${((ML + 6) / W) * 100}%`, top: MT + 3 }]}>
+              Risk OFF: Underweight {zoneLabel}
+            </Text>
+            <Text
+              maxFontSizeMultiplier={1.2}
+              numberOfLines={1}
+              style={[styles.zoneLabel, { color: RISK_ON_TEXT, left: `${((ML + 6) / W) * 100}%`, bottom: MB + 3 }]}>
+              Risk ON: Overweight {zoneLabel}
+            </Text>
+          </>
+        ) : null}
         {yearTicks.map((yt) => (
           <Text
             key={yt.t}
@@ -291,6 +378,11 @@ const styles = StyleSheet.create({
     fontFamily: QodeFont.uiRegular,
     fontSize: 10,
     color: QodeColor.textMuted,
+  },
+  zoneLabel: {
+    position: 'absolute',
+    fontFamily: QodeFont.ui,
+    fontSize: 10,
   },
   axisLabelY: {
     textAlign: 'right',

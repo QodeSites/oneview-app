@@ -78,6 +78,12 @@ Skip all of this — and delete `.env` entirely — once you're back on the
 same Wi-Fi as this machine; `getApiBaseUrl()` finds the LAN IP on its own
 with no tunnel needed at all.
 
+## Analytics and error tracking
+
+Release builds report to the self-hosted PostHog (product analytics) and Sentry (errors). Keys are set
+per build profile in `eas.json`; nothing is sent from development builds. Events, identity, privacy
+rules and how to send a test event: [docs/analytics.md](docs/analytics.md).
+
 ## Get a fresh project
 
 When you're ready, run:
