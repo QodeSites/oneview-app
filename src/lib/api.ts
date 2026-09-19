@@ -52,7 +52,9 @@ const QODE_ONEVIEW_PORT = 3171;
 const PRODUCTION_API_BASE_URL = 'https://oneview.qodeinvest.com';
 
 function resolveDevHost(): string | null {
-  const hostUri = Constants.expoConfig?.hostUri ?? Constants.expoGoConfig?.hostUri ?? null;
+  // expo-manifests' ExpoGoConfig type (pulled in by expo-updates) omits `hostUri`, which Expo Go still sets at runtime.
+  const goConfig = Constants.expoGoConfig as { hostUri?: string } | null;
+  const hostUri = Constants.expoConfig?.hostUri ?? goConfig?.hostUri ?? null;
   if (!hostUri) return null;
   const withoutPath = hostUri.split('/')[0] ?? '';
   const host = withoutPath.split(':')[0];

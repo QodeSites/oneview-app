@@ -10,6 +10,7 @@ import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-the
 import { useRemoteData } from '@/hooks/use-remote-data';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { dayLabel } from '@/lib/format';
+import { useKillSwitch } from '@/lib/remote-flags';
 import { getVsiIndicator, type VsiPoint } from '@/lib/reviewApi';
 
 /**
@@ -123,6 +124,7 @@ function VsiCard({ seg, points }: { seg: (typeof SEGMENTS)[number]; points: VsiP
 export default function VsiScreen() {
   const { state, refreshing, refresh } = useRemoteData(getVsiIndicator);
   const tabBarHeight = useTabBarHeight();
+  const killed = useKillSwitch('vsi');
 
   if (state.status === 'loading') {
     return (
@@ -161,7 +163,11 @@ export default function VsiScreen() {
             showDataBar={false}
           />
 
-          {notReady ? (
+          {killed ? (
+            <View style={styles.card}>
+              <Text style={styles.status}>The VSI is temporarily unavailable. Please check back shortly.</Text>
+            </View>
+          ) : notReady ? (
             <View style={styles.card}>
               <Text style={styles.status}>No precomputed VSI data for this combination yet.</Text>
             </View>

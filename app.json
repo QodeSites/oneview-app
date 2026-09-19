@@ -75,6 +75,14 @@
         "projectId": "adacca3b-2c39-4353-ba3f-1c3a8a4e1ba5"
       }
     },
-    "owner": "qodetech"
+    "owner": "qodetech",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/adacca3b-2c39-4353-ba3f-1c3a8a4e1ba5",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    }
   }
 }

@@ -21,6 +21,7 @@ import { QodeColor } from '@/constants/qode-theme';
 import { useAppAnalytics } from '@/lib/analytics';
 import { AppLockProvider } from '@/lib/app-lock';
 import { AuthProvider } from '@/lib/auth';
+import { useOtaUpdates } from '@/lib/ota';
 import { initTelemetry, useTelemetry } from '@/lib/telemetry';
 
 // PostHog + Sentry, before anything renders (guarded against double init on fast refresh).
@@ -119,6 +120,7 @@ function RootLayout() {
 function AppAnalytics() {
   useAppAnalytics();
   useTelemetry();
+  useOtaUpdates();
   return null;
 }
 
