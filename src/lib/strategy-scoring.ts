@@ -86,6 +86,51 @@ export function calculateScores(userAnswers: number[]): Scored[] {
   return allocations;
 }
 
+/** `recommendation` from qode-oneview's `GET /api/mobile/risk-profile` (strategy-recommendation.ts there). */
+export interface ServerRecommendation {
+  scores: { code: string; title: string; score: number; allocation: number }[];
+  /** The top two codes, best first. */
+  recommended: string[];
+}
+
+function usable(rec: ServerRecommendation | null | undefined): rec is ServerRecommendation {
+  if (!rec || !Array.isArray(rec.scores) || !Array.isArray(rec.recommended)) return false;
+  const known = STRATEGIES.every((def) =>
+    rec.scores.some((s) => s.code === def.code && Number.isFinite(s.score) && Number.isFinite(s.allocation)),
+  );
+  return known && rec.recommended.length > 0 && rec.recommended.every((c) => STRATEGIES.some((d) => d.code === c));
+}
+
+/**
+ * The recommendation to show for `answers`: the SERVER's scoring when it
+ * came back with the answers (so a weight or rule change on qode-oneview
+ * reaches the app without a release), otherwise this file's local copy —
+ * demo mode, an older server, or right after submitting, before the saved
+ * answers (and their server scoring) are fetched back.
+ *
+ * `topAlloc` (the "focused" two-strategy split) is presentation arithmetic
+ * on the server's scores for the server's recommended pair.
+ */
+export function resolveRecommendation(
+  answers: number[],
+  server: ServerRecommendation | null | undefined,
+): { scores: Scored[]; topTwo: Scored[] } {
+  if (!usable(server)) {
+    const scores = calculateScores(answers);
+    return { scores, topTwo: calculateTopTwo(scores) };
+  }
+  const scores: Scored[] = STRATEGIES.map((def) => {
+    const s = server.scores.find((x) => x.code === def.code)!;
+    return { ...def, score: s.score, allocation: s.allocation };
+  });
+  const pair = server.recommended
+    .slice(0, 2)
+    .map((code) => scores.find((s) => s.code === code))
+    .filter((s): s is Scored => !!s);
+  const withAlloc = calculateTopTwo(pair);
+  return { scores, topTwo: pair.map((p) => withAlloc.find((w) => w.code === p.code) ?? p) };
+}
+
 export function calculateTopTwo(allScores: Scored[]): Scored[] {
   const topStrategies = [...allScores].sort((a, b) => b.score - a.score).slice(0, 2);
   const total = topStrategies.reduce((sum, s) => sum + s.score, 0);
