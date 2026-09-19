@@ -53,7 +53,8 @@
         {
           "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID to lock and unlock your portfolio."
         }
-      ]
+      ],
+      "./plugins/with-scene-lifecycle"
     ],
     "experiments": {
       "typedRoutes": true,
