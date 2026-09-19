@@ -17,8 +17,10 @@ import type { AnalysisState, BuildingState } from '@/lib/reviewApi';
  * the real copy's own reasoning: a straight answer, not an apology, naming
  * the actual registrars (CAMS/KFin/NSDL/CDSL) rather than "your providers".
  *
- * NOT ported: the CasUpload fallback the web version offers alongside the
- * WhatsApp link — that flow doesn't exist on mobile yet (see PROGRESS.md).
+ * NOT ported: the CasUpload fallback web offers alongside the WhatsApp
+ * link (web embeds the whole widget inline here). Tried on mobile as a
+ * link to its own `/upload-statement` screen (18 Sep), then removed
+ * again the same day — not the right fit for this screen after all.
  *
  * There is no polling here the way the web version's `router.refresh()`
  * interval has — `app-tabs.tsx`'s own `useRemoteData` re-fetches on

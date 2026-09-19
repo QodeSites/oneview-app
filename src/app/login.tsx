@@ -24,6 +24,7 @@ import { TrustBadges } from '@/components/auth/TrustBadges';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { sendOtp, verifyOtp } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { setDemoScenario } from '@/lib/demo';
 
 type Step = 'phone' | 'otp' | 'no-account';
 
@@ -263,6 +264,11 @@ export default function LoginScreen() {
                     <Pressable
                       style={({ pressed }) => [styles.demoLink, pressed && styles.buttonPressed]}
                       onPress={() => {
+                        // Reset explicitly — `scenario` is a module-level
+                        // flag that outlives sign-out, so without this a
+                        // prior "Finvu fetch failed" tap would silently
+                        // leak into this, the normal demo entry point.
+                        setDemoScenario('normal');
                         void signInDemo().then(() => router.replace('/performance'));
                       }}>
                       <Text style={styles.demoLinkText}>View demo (populated dummy account, dev only)</Text>
@@ -273,6 +279,20 @@ export default function LoginScreen() {
                       style={({ pressed }) => [styles.demoLink, pressed && styles.buttonPressed]}
                       onPress={() => router.push('/welcome')}>
                       <Text style={styles.demoLinkText}>View welcome slides (dev only)</Text>
+                    </Pressable>
+                    {/* Forces the exact state a real Finvu delivery failure
+                        produces (consent exists, nothing delivered,
+                        FETCH_BUDGET_MS long since passed) — see demo.ts's
+                        DEMO_REVIEW_FETCH_FAILED_PAYLOAD. Lands straight on
+                        BuildingReview's AggregatorTrouble screen instead of
+                        needing a real account stuck mid-linking. */}
+                    <Pressable
+                      style={({ pressed }) => [styles.demoLink, pressed && styles.buttonPressed]}
+                      onPress={() => {
+                        setDemoScenario('fetch-failed');
+                        void signInDemo().then(() => router.replace('/performance'));
+                      }}>
+                      <Text style={styles.demoLinkText}>View Finvu fetch-failed screen (dev only)</Text>
                     </Pressable>
                   </>
                 ) : null}

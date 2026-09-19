@@ -40,6 +40,27 @@ export function setDemoActive(value: boolean): void {
   active = value;
 }
 
+/**
+ * Which demo dataset `getReview()` (reviewApi.ts) serves. `'normal'` is the
+ * populated dummy account every other demo screen already used; 'fetch-
+ * failed' forces the exact state `BuildingReview.tsx`'s `AggregatorTrouble`
+ * needs (a consent that exists but has never delivered, `startedAt` well
+ * past `FETCH_BUDGET_MS`) — added 18 Sep so that screen (and its "Upload
+ * your holdings instead" escape hatch) can be tested on demand, without
+ * waiting on a real AA failure or touching a real account.
+ */
+export type DemoScenario = 'normal' | 'fetch-failed';
+
+let scenario: DemoScenario = 'normal';
+
+export function getDemoScenario(): DemoScenario {
+  return scenario;
+}
+
+export function setDemoScenario(value: DemoScenario): void {
+  scenario = value;
+}
+
 export const DEMO_PRESENCE: PresenceSummary = {
   isEmpty: false,
   hasConsent: true,
@@ -51,6 +72,23 @@ export const DEMO_REVIEW_PAYLOAD: ReviewPayload = {
   presence: DEMO_PRESENCE,
   building: null,
   analysis: { building: false, done: 4, total: 4, startedAt: null },
+};
+
+/**
+ * `presence.isEmpty: true` + a non-null `building` is what `TabsGate`
+ * (app-tabs.tsx) reads as "consent exists, nothing delivered yet" and
+ * routes to `BuildingReview` rather than `NothingYet`. `startedAt` two
+ * hours back means `BuildingReview`'s own overdue check (60s) has already
+ * tripped the moment this loads, landing straight on `AggregatorTrouble`
+ * instead of the plain "Collecting your accounts" wait card — the point
+ * of this scenario is testing the failure screen, not re-waiting out the
+ * same minute every time.
+ */
+export const DEMO_REVIEW_FETCH_FAILED_PAYLOAD: ReviewPayload = {
+  data: mockReviewData,
+  presence: { isEmpty: true, hasConsent: true, everDelivered: false },
+  building: { startedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
+  analysis: null,
 };
 
 export const DEMO_PERFORMANCE_PAYLOAD: PerformancePayload = {

@@ -95,6 +95,22 @@ export default function LinkAccountsScreen() {
   // since it's read/written from an event handler and must never itself
   // trigger a re-render.
   const retriedRef = useRef(false);
+  // Whether `handleNavigation`'s `isReview` branch has already decided what
+  // to do THIS session (go to Performance, or show "already linked") — a
+  // ref, not state, for the same reason `retriedRef` is. Once qode-oneview's
+  // own `/review` page is showing (the stalled-fetch `AggregatorTrouble`
+  // screen included), further real, in-page actions on THAT page — CasUpload
+  // uploading a statement, which finishes with its own `window.location.
+  // replace("/review")` — fire ANOTHER `onNavigationStateChange` matching
+  // the same `isReview` regex. Without this guard that reprocesses as if it
+  // were a brand-new, out-of-journey arrival at `/review`, which can land on
+  // the "already linked" branch and yank the reader back to this screen's
+  // own native panel mid-upload (reported 18 Sep: "when clicked we are
+  // redirected to mobile Link accounts page"). The fix isn't to distinguish
+  // CasUpload's redirect from any other — `isReview` has no way to, and
+  // doesn't need to — it's that THIS screen has nothing further to decide
+  // once it's already decided once per session.
+  const reviewHandledRef = useRef(false);
 
   // Split from `start` below so the mount effect's own trigger (right
   // underneath) only ever calls the pure-fetch half, not the synchronous
@@ -131,6 +147,7 @@ export default function LinkAccountsScreen() {
   // expects) then kicks off the same `load()` the mount effect uses.
   const start = useCallback(() => {
     retriedRef.current = false;
+    reviewHandledRef.current = false;
     setPhase('starting');
     setError(null);
     setUrl(null);
@@ -155,6 +172,12 @@ export default function LinkAccountsScreen() {
   function handleNavigation(nav: WebViewNavigation) {
     const isReview = /\/review(?:[/?]|$)/.test(nav.url) || nav.url.includes('/link/done');
     if (isReview) {
+      // Only the FIRST arrival at /review this session is a real decision
+      // — see reviewHandledRef's own comment. A later one (CasUpload's own
+      // post-upload redirect, chiefly) is a real, legitimate navigation on
+      // qode-oneview's own page, not a new instruction to this screen.
+      if (reviewHandledRef.current) return;
+      reviewHandledRef.current = true;
       if (phase === 'ready') {
         // A genuinely completed journey — this WebView actually showed
         // the FinVU steps before landing here.
@@ -235,6 +258,13 @@ export default function LinkAccountsScreen() {
             <Text style={styles.close}>Close</Text>
           </Pressable>
         </View>
+
+        {/* No "upload a statement instead" escape hatch here (tried 18
+            Sep, removed same day — looked wrong wedged into this
+            screen's own chrome while the real FinVU journey is running).
+            The upload path is offered before this screen is ever reached
+            (`NothingYet.tsx`) and after, if linking stalls or fails
+            (`BuildingReview.tsx`'s `AggregatorTrouble`) — not mid-journey. */}
 
         {phase === 'starting' || phase === 'error' || phase === 'already-linked' ? (
           <View style={styles.centered}>
