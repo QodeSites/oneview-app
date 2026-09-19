@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 
+import { isDemoActive } from '@/lib/demo';
 import { notifySessionExpired } from '@/lib/session-events';
 
 /**
@@ -437,7 +438,19 @@ export type InboundAddressResult = { ok: true; address: string } | { ok: false; 
  * forward-by-email section, never as a scary error banner, since this is
  * the least essential of the four recovery paths.
  */
+/** Demo mode has no real customer to mint a real forwarding address for. */
+const DEMO_INBOUND_ADDRESS = 'demo-portfolio@inbound.qodeinvest.com';
+
 export async function getInboundAddress(): Promise<InboundAddressResult> {
+  // Every other getXxx in reviewApi.ts branches on isDemoActive() before
+  // ever calling the network; this one didn't, so it was the one call
+  // upload-statement.tsx makes that still went out for real under a demo
+  // session — no real cookie, so a real 401, which the app's global
+  // session-expiry handler (session-events.ts) correctly treated as "the
+  // real session died," signing out and bouncing to login (reported 19
+  // Sep, from both the fetch-failed demo screen AND the pre-existing
+  // "View demo" button's own Upload holdings entry — not new to either).
+  if (isDemoActive()) return { ok: true, address: DEMO_INBOUND_ADDRESS };
   let res: Response;
   try {
     res = await fetchWithTimeout(`${getApiBaseUrl()}/api/inbound-address`, {
