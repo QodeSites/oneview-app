@@ -345,7 +345,20 @@ export interface CasUploadInput {
  * status-with-no-body or a network failure falls back to a generic
  * message here.
  */
+/**
+ * Every real write action on upload-statement.tsx (this one included) needs
+ * a real, signed-in custId to save a result against — unlike a plain read
+ * (getInboundAddress's own fix), there's no fake response that would mean
+ * anything here, the way "Link another account" also can't be simulated in
+ * demo mode. Short-circuiting before the network call, rather than letting
+ * it go out for real and 401, avoids the same confusing "session expired"
+ * bounce that call used to cause (reported 19 Sep, once getInboundAddress
+ * was already fixed — this is the same gap, one step further in).
+ */
+const DEMO_ACTION_ERROR = 'Not available in demo mode — this needs a real signed-in account.';
+
 export async function uploadCasStatement(input: CasUploadInput): Promise<SimpleApiResult> {
+  if (isDemoActive()) return { ok: false, error: DEMO_ACTION_ERROR };
   const form = new FormData();
   form.append('file', { uri: input.uri, name: input.name, type: 'application/pdf' } as unknown as Blob);
   if (input.password) form.append('password', input.password);
@@ -375,6 +388,7 @@ export async function uploadCasStatement(input: CasUploadInput): Promise<SimpleA
  * accepted, not that the email has arrived yet.
  */
 export async function requestCamsStatement(email: string, password: string): Promise<SimpleApiResult> {
+  if (isDemoActive()) return { ok: false, error: DEMO_ACTION_ERROR };
   const { status, data } = await postJson<{ ok?: boolean; error?: string }>(
     '/api/cas/generate',
     { email, password },
@@ -394,6 +408,7 @@ export type DematFetchResult = { ok: true; sessionId: string } | { ok: false; er
  * responsible for that shape, not this function.
  */
 export async function startDematFetch(input: { pan: string; boId: string; dob: string }): Promise<DematFetchResult> {
+  if (isDemoActive()) return { ok: false, error: DEMO_ACTION_ERROR };
   const { status, data } = await postJson<{ ok?: boolean; sessionId?: string; error?: string }>(
     '/api/demat/fetch',
     input,
@@ -417,6 +432,7 @@ export async function verifyDematOtp(input: {
   otp: string;
   pan: string;
 }): Promise<SimpleApiResult> {
+  if (isDemoActive()) return { ok: false, error: DEMO_ACTION_ERROR };
   const { status, data } = await postJson<{ ok?: boolean; error?: string }>(
     '/api/demat/verify',
     input,
