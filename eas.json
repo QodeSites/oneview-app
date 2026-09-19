@@ -41,6 +41,12 @@
         "SENTRY_DISABLE_AUTO_UPLOAD": "true",
         "EXPO_PUBLIC_APP_ENV": "production"
       }
+    },
+    "telemetry-selftest": {
+      "extends": "preview-simulator",
+      "env": {
+        "EXPO_PUBLIC_TELEMETRY_SELFTEST": "1"
+      }
     }
   },
   "submit": {
