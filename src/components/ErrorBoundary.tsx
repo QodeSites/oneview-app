@@ -5,6 +5,7 @@ import { DevSettings, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { useAuth } from '@/lib/auth';
+import { reportError } from '@/lib/telemetry';
 
 interface Props {
   children: ReactNode;
@@ -60,6 +61,7 @@ class ErrorBoundaryImpl extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: { componentStack?: string | null }) {
     console.error('[ErrorBoundary] caught a render error:', error, info.componentStack);
+    reportError(error, { componentStack: info.componentStack ?? undefined });
   }
 
   render() {

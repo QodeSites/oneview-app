@@ -10,6 +10,7 @@ import { ErrorView, LoadingView } from '@/components/RemoteStateView';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { useRemoteData } from '@/hooks/use-remote-data';
 import { fetchReportPdf } from '@/lib/api';
+import { track } from '@/lib/telemetry';
 import { getReportsData } from '@/lib/reviewApi';
 
 /**
@@ -71,6 +72,7 @@ export default function ReportsScreen() {
           UTI: 'com.adobe.pdf',
           dialogTitle: 'Save or share your review',
         });
+        track('factsheet_downloaded', { product: 'portfolio_review' });
       } else {
         setDownloadError('Downloaded, but this device has no way to save or share it.');
       }
@@ -149,6 +151,7 @@ export default function ReportsScreen() {
             <Pressable
               style={({ pressed }) => [styles.callButton, pressed && styles.pressed]}
               onPress={() => {
+                track('support_contacted', { channel: 'whatsapp' });
                 Linking.openURL(bookACallUrl(r.contact.phone, client.name)).catch(() => {});
               }}>
               <Text style={styles.callButtonText}>Book a call with Qode</Text>
