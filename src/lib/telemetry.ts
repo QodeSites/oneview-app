@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/react-native';
 import * as Application from 'expo-application';
+import * as Updates from 'expo-updates';
 import { usePathname } from 'expo-router';
 import PostHog from 'posthog-react-native';
 import { useEffect, useRef } from 'react';
@@ -76,6 +77,9 @@ export function initTelemetry(): void {
         sendDefaultPii: false,
         tracesSampleRate: ENVIRONMENT === 'production' ? 0.1 : 0.2,
         beforeSend: (event) => scrubSentryEvent(event),
+        // An OTA update changes the JS without changing the release, so the
+        // update id is what says which code actually threw.
+        initialScope: { tags: { expo_update_id: Updates.updateId ?? 'embedded' } },
         beforeBreadcrumb: (crumb) => {
           if (crumb.message) crumb.message = scrubText(crumb.message);
           if (crumb.data) crumb.data = scrubSentryEvent({ extra: crumb.data }).extra;
@@ -102,6 +106,8 @@ export function initTelemetry(): void {
         platform: Platform.OS,
         app_version: Application.nativeApplicationVersion ?? 'unknown',
         environment: ENVIRONMENT,
+        // Which OTA update is running — 'embedded' until one lands (docs/releasing.md).
+        update_id: Updates.updateId ?? 'embedded',
       });
       linkSentryToPostHog();
     } catch {

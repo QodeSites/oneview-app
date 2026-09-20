@@ -2,6 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { AppInfo } from '@/components/AppInfo';
 import { PageHeader } from '@/components/PageHeader';
 import { DetailRow, ProfileDetailsCard } from '@/components/ProfileDetailsCard';
 import { ErrorView, LoadingView } from '@/components/RemoteStateView';
@@ -114,6 +115,8 @@ export default function ProfileScreen() {
               </View>
             </>
           )}
+
+          <AppInfo />
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
