@@ -10,6 +10,8 @@ import { ErrorView, LoadingView } from '@/components/RemoteStateView';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { useRemoteData } from '@/hooks/use-remote-data';
 import { fetchReportPdf } from '@/lib/api';
+import { useKillSwitch } from '@/lib/remote-flags';
+import { track } from '@/lib/telemetry';
 import { getReportsData } from '@/lib/reviewApi';
 
 /**
@@ -49,6 +51,7 @@ function bookACallUrl(phone: string, name: string): string {
 export default function ReportsScreen() {
   const { state, refreshing, refresh } = useRemoteData(getReportsData);
   const [downloading, setDownloading] = useState(false);
+  const downloadKilled = useKillSwitch('report_download');
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   async function handleDownload() {
@@ -71,6 +74,7 @@ export default function ReportsScreen() {
           UTI: 'com.adobe.pdf',
           dialogTitle: 'Save or share your review',
         });
+        track('factsheet_downloaded', { product: 'portfolio_review' });
       } else {
         setDownloadError('Downloaded, but this device has no way to save or share it.');
       }
@@ -122,18 +126,22 @@ export default function ReportsScreen() {
             <Text style={styles.cardBody}>
               A print-perfect PDF of everything you see in the app, generated from the same data, always in sync.
             </Text>
-            <Pressable
-              style={({ pressed }) => [
-                styles.downloadButton,
-                downloading && styles.downloadButtonBusy,
-                pressed && styles.pressed,
-              ]}
-              disabled={downloading}
-              onPress={() => void handleDownload()}>
-              <Text style={styles.downloadButtonText}>
-                {downloading ? 'Generating your report…' : '⬇ Download report'}
-              </Text>
-            </Pressable>
+            {downloadKilled ? (
+              <Text style={styles.downloadError}>Report download is temporarily unavailable. Please try again later.</Text>
+            ) : (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.downloadButton,
+                  downloading && styles.downloadButtonBusy,
+                  pressed && styles.pressed,
+                ]}
+                disabled={downloading}
+                onPress={() => void handleDownload()}>
+                <Text style={styles.downloadButtonText}>
+                  {downloading ? 'Generating your report…' : '⬇ Download report'}
+                </Text>
+              </Pressable>
+            )}
             {downloadError ? <Text style={styles.downloadError}>{downloadError}</Text> : null}
             <View style={styles.regLine}>
               <Text style={styles.regEntity}>Qode Advisors LLP</Text>
@@ -149,6 +157,7 @@ export default function ReportsScreen() {
             <Pressable
               style={({ pressed }) => [styles.callButton, pressed && styles.pressed]}
               onPress={() => {
+                track('support_contacted', { channel: 'whatsapp' });
                 Linking.openURL(bookACallUrl(r.contact.phone, client.name)).catch(() => {});
               }}>
               <Text style={styles.callButtonText}>Book a call with Qode</Text>

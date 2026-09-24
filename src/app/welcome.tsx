@@ -25,7 +25,7 @@ import { markWelcomeSeen } from '@/lib/welcome';
 const PAGES: { card: number; eyebrow: string; title: string; body: string }[] = [
   {
     card: 0,
-    eyebrow: 'ONEVIEW',
+    eyebrow: 'QODE ONEVIEW',
     title: 'See what your portfolio is really doing.',
     body: 'Connect your investments and get a personalised review of your performance, allocation and risk.',
   },

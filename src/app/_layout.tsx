@@ -4,6 +4,7 @@ import {
   PlayfairDisplay_700Bold,
   useFonts as usePlayfairFonts,
 } from '@expo-google-fonts/playfair-display';
+import * as Sentry from '@sentry/react-native';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -20,6 +21,11 @@ import { QodeColor } from '@/constants/qode-theme';
 import { useAppAnalytics } from '@/lib/analytics';
 import { AppLockProvider } from '@/lib/app-lock';
 import { AuthProvider } from '@/lib/auth';
+import { useOtaUpdates } from '@/lib/ota';
+import { initTelemetry, useTelemetry } from '@/lib/telemetry';
+
+// PostHog + Sentry, before anything renders (guarded against double init on fast refresh).
+initTelemetry();
 
 SplashScreen.preventAutoHideAsync();
 
@@ -60,7 +66,7 @@ SystemUI.setBackgroundColorAsync(QodeColor.greenDeep);
  * route. A font that fails to load, or takes over 3 seconds, doesn't hold
  * the app up; it falls back to the system font.
  */
-export default function RootLayout() {
+function RootLayout() {
   const colorScheme = useColorScheme();
   const [playfairLoaded, playfairError] = usePlayfairFonts({ PlayfairDisplay_500Medium, PlayfairDisplay_700Bold });
   const [latoLoaded, latoError] = useLatoFonts({ Lato_400Regular, Lato_700Bold });
@@ -113,8 +119,13 @@ export default function RootLayout() {
 /** Install / app-open analytics (src/lib/analytics.ts), mounted once. */
 function AppAnalytics() {
   useAppAnalytics();
+  useTelemetry();
+  useOtaUpdates();
   return null;
 }
+
+// Sentry's root wrapper: touch/navigation breadcrumbs and a last-resort error boundary.
+export default Sentry.wrap(RootLayout);
 
 const styles = StyleSheet.create({
   root: {

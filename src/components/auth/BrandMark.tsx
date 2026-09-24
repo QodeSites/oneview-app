@@ -71,7 +71,7 @@ export function BrandMark({
           />
         </Svg>
       </View>
-      {showWordmark ? <Text style={[styles.word, { fontSize: size * 0.6 }]}>OneView</Text> : null}
+      {showWordmark ? <Text style={[styles.word, { fontSize: size * 0.6 }]}>Qode OneView</Text> : null}
     </View>
   );
 }

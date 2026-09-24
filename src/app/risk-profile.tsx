@@ -10,7 +10,8 @@ import { QodeColor, QodeFont, QodeRadius, QodeSpace, StrategyColor } from '@/con
 import { useRemoteData } from '@/hooks/use-remote-data';
 import { saveStrategyAnswers } from '@/lib/api';
 import { getRiskProfileData } from '@/lib/reviewApi';
-import { calculateScores, calculateTopTwo, type Scored } from '@/lib/strategy-scoring';
+import { resolveRecommendation, type Scored, type ServerRecommendation } from '@/lib/strategy-scoring';
+import { track } from '@/lib/telemetry';
 
 interface Question {
   question: string;
@@ -91,7 +92,8 @@ export default function RiskProfileScreen() {
 
   return (
     <RiskProfileBody
-      savedAnswers={state.data}
+      savedAnswers={state.data.answers}
+      recommendation={state.data.recommendation}
       refreshing={refreshing}
       onRefresh={refresh}
       onSaved={revalidate}
@@ -105,19 +107,22 @@ function isComplete(saved: number[] | null): saved is number[] {
 
 function RiskProfileBody({
   savedAnswers,
+  recommendation,
   refreshing,
   onRefresh,
   onSaved,
 }: {
   savedAnswers: number[] | null;
+  recommendation: ServerRecommendation | null;
   refreshing: boolean;
   onRefresh: () => void;
   onSaved: () => void;
 }) {
   const hasSaved = isComplete(savedAnswers);
   const [answers, setAnswers] = useState<number[]>(hasSaved ? [...savedAnswers] : Array(QUESTIONS.length).fill(0));
-  const [scores, setScores] = useState<Scored[]>(hasSaved ? calculateScores(savedAnswers) : []);
-  const [topTwo, setTopTwo] = useState<Scored[]>(hasSaved ? calculateTopTwo(calculateScores(savedAnswers)) : []);
+  const initial = hasSaved ? resolveRecommendation(savedAnswers, recommendation) : null;
+  const [scores, setScores] = useState<Scored[]>(initial?.scores ?? []);
+  const [topTwo, setTopTwo] = useState<Scored[]>(initial?.topTwo ?? []);
   const [show, setShow] = useState(hasSaved);
   const [editing, setEditing] = useState(!hasSaved);
   const [error, setError] = useState('');
@@ -128,15 +133,16 @@ function RiskProfileBody({
   // this screen is mid-edit or mid-save, where they would overwrite the
   // reader's own unsaved or just-saved choices. Before this, even
   // pull-to-refresh fetched the new answers but never showed them.
-  const savedKey = JSON.stringify(savedAnswers);
+  // The server's scoring can change for the same answers, so it's part of the key.
+  const savedKey = JSON.stringify([savedAnswers, recommendation]);
   const [appliedKey, setAppliedKey] = useState(savedKey);
   if (savedKey !== appliedKey && !editing && !saving) {
     setAppliedKey(savedKey);
     if (isComplete(savedAnswers)) {
-      const all = calculateScores(savedAnswers);
+      const resolved = resolveRecommendation(savedAnswers, recommendation);
       setAnswers([...savedAnswers]);
-      setScores(all);
-      setTopTwo(calculateTopTwo(all));
+      setScores(resolved.scores);
+      setTopTwo(resolved.topTwo);
       setShow(true);
     } else {
       setAnswers(Array(QUESTIONS.length).fill(0));
@@ -159,10 +165,13 @@ function RiskProfileBody({
       setError('Answer every question first — the recommendation weighs all six.');
       return;
     }
-    const all = calculateScores(answers);
+    // Local scoring for instant feedback; the server's scoring replaces it once the save lands and refetches.
+    const { scores: all, topTwo: recommended } = resolveRecommendation(answers, null);
     setScores(all);
-    setTopTwo(calculateTopTwo(all));
+    setTopTwo(recommended);
     setShow(true);
+    // risk_band = the top recommended strategy (QAW / QTF / QGF) — this questionnaire's own outcome.
+    track('risk_profile_completed', { risk_band: recommended[0]?.code ?? 'unknown' });
     setEditing(false);
     setSaving(true);
     // Re-check only once the save has landed, so the server echoes the new

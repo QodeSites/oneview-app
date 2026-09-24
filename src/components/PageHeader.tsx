@@ -34,10 +34,13 @@ export function PageHeader({
   title,
   subtitle,
   navAsOf,
+  showDataBar = true,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   navAsOf: string | null;
+  /** Off for market-wide screens (VSI), where the reader's own statements don't feed the data. */
+  showDataBar?: boolean;
 }) {
   const [pressed, setPressed] = useState(false);
   return (
@@ -45,7 +48,7 @@ export function PageHeader({
       <View style={styles.titleRow}>
         <View style={styles.titleCol}>
           <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
+          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         </View>
         <View style={styles.metaCol}>
           <Text style={styles.metaText}>
@@ -54,27 +57,29 @@ export function PageHeader({
         </View>
       </View>
 
-      <Link href="/upload-statement" asChild>
-        {/* Link's asChild clones this via a Slot, which merges an
-            incoming `style` by concatenating it into an array — fine for
-            a plain object, but a FUNCTION style (tried here first, for
-            the pressed-state dim) landed in that array as one of its
-            entries, and RN's style resolution can't do anything with a
-            function inside a style array: the whole style silently
-            failed to apply — no padding, no background, no rounded
-            corners (reported 18 Sep, on more.tsx's identically-broken
-            list rows — same fix there). Tracking `pressed` by hand keeps
-            this a plain, already-flattened object, which Slot's
-            array-merge handles fine. */}
-        <Pressable
-          onPressIn={() => setPressed(true)}
-          onPressOut={() => setPressed(false)}
-          style={StyleSheet.flatten([styles.dataBar, pressed && styles.pressed])}>
-          <Text style={styles.dataBarText}>
-            Data looks incomplete? Upload your CAMS/KFin or NSDL/CDSL statement →
-          </Text>
-        </Pressable>
-      </Link>
+      {showDataBar ? (
+        <Link href="/upload-statement" asChild>
+          {/* Link's asChild clones this via a Slot, which merges an
+              incoming `style` by concatenating it into an array — fine for
+              a plain object, but a FUNCTION style (tried here first, for
+              the pressed-state dim) landed in that array as one of its
+              entries, and RN's style resolution can't do anything with a
+              function inside a style array: the whole style silently
+              failed to apply — no padding, no background, no rounded
+              corners (reported 18 Sep, on more.tsx's identically-broken
+              list rows — same fix there). Tracking `pressed` by hand keeps
+              this a plain, already-flattened object, which Slot's
+              array-merge handles fine. */}
+          <Pressable
+            onPressIn={() => setPressed(true)}
+            onPressOut={() => setPressed(false)}
+            style={StyleSheet.flatten([styles.dataBar, pressed && styles.pressed])}>
+            <Text style={styles.dataBarText}>
+              Data looks incomplete? Upload your CAMS/KFin or NSDL/CDSL statement →
+            </Text>
+          </Pressable>
+        </Link>
+      ) : null}
     </View>
   );
 }

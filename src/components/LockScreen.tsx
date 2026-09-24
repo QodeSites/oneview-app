@@ -63,7 +63,7 @@ export function LockScreen() {
         <SafeAreaView style={styles.safe}>
           <View style={styles.center}>
             <BrandMark size={34} showWordmark={false} glow />
-            <Text style={styles.title}>OneView is locked</Text>
+            <Text style={styles.title}>Qode OneView is locked</Text>
             <Text style={styles.body}>Unlock to see your portfolio.</Text>
           </View>
           <View style={styles.actions}>

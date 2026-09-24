@@ -18,7 +18,7 @@ import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { money, signedPct } from '@/lib/format';
 import { type CapBand } from '@/lib/mock-data';
 import { getPerformance, getRiskProfileData } from '@/lib/reviewApi';
-import { calculateScores } from '@/lib/strategy-scoring';
+import { resolveRecommendation } from '@/lib/strategy-scoring';
 
 /**
  * Performance & Overview, merged into one screen exactly like
@@ -167,11 +167,14 @@ export default function PerformanceScreen() {
       : null;
   // Ported from Performance.tsx's `riskBlend`: the saved answers' allocation
   // on the same three sleeves. Null until all six are answered.
-  const savedAnswers = riskProfile.state.status === 'ready' ? riskProfile.state.data : null;
+  const saved = riskProfile.state.status === 'ready' ? riskProfile.state.data : null;
+  const savedAnswers = saved?.answers ?? null;
   const riskBlend =
     savedAnswers && savedAnswers.length === 6
       ? (() => {
-          const byCode = new Map(calculateScores(savedAnswers).map((r) => [r.code, r.allocation]));
+          const byCode = new Map(
+            resolveRecommendation(savedAnswers, saved?.recommendation).scores.map((r) => [r.code, r.allocation]),
+          );
           return RECOMMENDED_BLEND.map((b) => ({ ...b, percent: byCode.get(b.code) ?? 0 }));
         })()
       : null;

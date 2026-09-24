@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "OneView",
+    "name": "Qode OneView",
     "slug": "mobile-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -9,6 +9,9 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.qodeinvest.oneview",
+      "infoPlist": {
+        "CFBundleDisplayName": "OneView"
+      },
       "icon": {
         "light": "./assets/images/icon.png",
         "dark": "./assets/images/ios-icon-dark.png",
@@ -50,7 +53,17 @@
         {
           "faceIDPermission": "Allow $(PRODUCT_NAME) to use Face ID to lock and unlock your portfolio."
         }
-      ]
+      ],
+      "./plugins/with-scene-lifecycle",
+      [
+        "@sentry/react-native",
+        {
+          "url": "https://sentry.qodeinvest.com/",
+          "organization": "sentry",
+          "project": "qode-app"
+        }
+      ],
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -62,6 +75,14 @@
         "projectId": "adacca3b-2c39-4353-ba3f-1c3a8a4e1ba5"
       }
     },
-    "owner": "qodetech"
+    "owner": "qodetech",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/adacca3b-2c39-4353-ba3f-1c3a8a4e1ba5",
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    }
   }
 }
