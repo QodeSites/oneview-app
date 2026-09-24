@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   BackHandler,
@@ -23,7 +23,7 @@ import { StepDots } from '@/components/auth/StepDots';
 import { TrustBadges } from '@/components/auth/TrustBadges';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { sendOtp, verifyOtp } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { enterApp, useAuth } from '@/lib/auth';
 import { setDemoScenario } from '@/lib/demo';
 
 type Step = 'phone' | 'otp' | 'no-account';
@@ -184,15 +184,29 @@ export default function LoginScreen() {
    * different number" already do, and only fall through to the OS
    * default (exit) once already back at the phone step itself.
    */
-  useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (step === 'phone') return false;
-      setStep('phone');
-      setPhone('');
-      return true;
-    });
-    return () => sub.remove();
-  }, [step]);
+  /**
+   * Registered via `useFocusEffect`, not a plain `useEffect`: this screen
+   * stays MOUNTED underneath `/register` once the no-account step pushes
+   * it, and `BackHandler` runs every registered handler regardless of
+   * which screen is on top, newest first. A plain effect therefore kept
+   * this handler live on the Register screen too, where it returned
+   * `true` (step was 'no-account', not 'phone') and swallowed the press —
+   * so back on Register did nothing at all, silently resetting the login
+   * screen hidden behind it instead of popping back to it. Scoped to
+   * focus, it only runs while login is the screen actually being looked
+   * at (reported 22 Sep, in the same pass as the tab-back fix).
+   */
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (step === 'phone') return false;
+        setStep('phone');
+        setPhone('');
+        return true;
+      });
+      return () => sub.remove();
+    }, [step]),
+  );
 
   async function verify(code: string): Promise<VerifyOutcome> {
     const result = await verifyOtp(code);
@@ -206,7 +220,7 @@ export default function LoginScreen() {
     // `/api/auth/verify` just set — the write has no reason to block
     // the navigation that follows it.
     void signIn(phone);
-    router.replace('/performance');
+    enterApp();
     return { status: 'ok' };
   }
 
@@ -269,7 +283,7 @@ export default function LoginScreen() {
                         // prior "Finvu fetch failed" tap would silently
                         // leak into this, the normal demo entry point.
                         setDemoScenario('normal');
-                        void signInDemo().then(() => router.replace('/performance'));
+                        void signInDemo().then(enterApp);
                       }}>
                       <Text style={styles.demoLinkText}>View demo (populated dummy account, dev only)</Text>
                     </Pressable>
@@ -290,7 +304,7 @@ export default function LoginScreen() {
                       style={({ pressed }) => [styles.demoLink, pressed && styles.buttonPressed]}
                       onPress={() => {
                         setDemoScenario('fetch-failed');
-                        void signInDemo().then(() => router.replace('/performance'));
+                        void signInDemo().then(enterApp);
                       }}>
                       <Text style={styles.demoLinkText}>View Finvu fetch-failed screen (dev only)</Text>
                     </Pressable>

@@ -7,6 +7,26 @@ import { setDemoActive } from '@/lib/demo';
 import { subscribeSessionExpired } from '@/lib/session-events';
 import { deleteStorageItem, getStorageItem, setStorageItem } from '@/lib/storage';
 
+/**
+ * Navigate into the app after a successful sign-in (a real OTP verify, a
+ * fresh registration, or entering demo mode) — used in place of a bare
+ * `router.replace('/performance')`, which only swaps the CURRENT screen
+ * and leaves every earlier PUSHED screen (welcome, login, a pushed
+ * register) sitting in history underneath it. A reader who went
+ * welcome → login → register (a real push, the only one in the auth
+ * flow — see register.tsx) then landed on Performance could press back
+ * once and be looking at Register again, mid-signed-in (reported 22 Sep:
+ * "from Sign and login screen to inside Performance, when doing back it
+ * goes to Signup page"). `dismissAll()` first pops every pushed screen
+ * back to the stack's root, so the `replace` that follows has nothing
+ * left behind it to leak back into, regardless of how the reader got
+ * here or how many auth screens they passed through.
+ */
+export function enterApp(): void {
+  if (router.canDismiss()) router.dismissAll();
+  router.replace('/performance');
+}
+
 const SESSION_KEY = 'qode.session.phone';
 const DEMO_KEY = 'qode.session.demo';
 

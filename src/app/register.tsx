@@ -9,7 +9,7 @@ import { BrandMark } from '@/components/auth/BrandMark';
 import { StepDots } from '@/components/auth/StepDots';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { registerAccount } from '@/lib/api';
-import { useAuth } from '@/lib/auth';
+import { enterApp, useAuth } from '@/lib/auth';
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -70,7 +70,7 @@ export default function RegisterScreen() {
         return;
       }
       void signIn(phone ?? '');
-      router.replace('/performance');
+      enterApp();
     } finally {
       setSaving(false);
     }
