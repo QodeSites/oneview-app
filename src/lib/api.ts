@@ -315,36 +315,19 @@ export async function saveStrategyAnswers(answers: number[]): Promise<void> {
 export type SimpleApiResult = { ok: true } | { ok: false; error: string };
 
 export interface CasUploadInput {
-  /** The picked file's local URI (from `expo-document-picker`), e.g. `file:///...`. */
-  uri: string;
+  /**
+   * The picked PDF's bytes, read at pick time in upload-statement.tsx (see
+   * `pick()` there for why) — deliberately not a URI: a picked file's URI
+   * can stop being readable between picking and submitting (an Android
+   * content grant, an iOS temp copy), and expo-file-system's path rules
+   * differ per platform. Bytes in hand means nothing here depends on either.
+   */
+  bytes: Uint8Array;
   name: string;
   /** Optional password, usually the customer's PAN in capitals. */
   password?: string;
 }
 
-/**
- * Real call to `POST /api/cas/upload` — a manual CAS/demat PDF upload,
- * multipart, so this can't reuse `postJson` (JSON-only). Mirrors the web
- * `UploadForm`'s own request exactly: a `file` field and an optional
- * `password` field, no explicit `Content-Type` header (see below).
- *
- * React Native's `FormData` accepts a plain `{ uri, name, type }` object in
- * place of a real browser `File`/`Blob` for a file field — its own
- * networking layer reads the file at `uri` and streams it as the
- * multipart part. This is the documented RN-specific shape, not a bug
- * worked around here.
- *
- * No `Content-Type` header is set on the request itself: `fetch` needs to
- * compute its own multipart boundary from the `FormData` body, and a
- * hand-set `multipart/form-data` header (without that boundary parameter)
- * would leave the server unable to parse the body at all.
- *
- * The server's own failure messages already distinguish a bad password
- * from an unreadable file from "no holdings found" (see `cas/upload`'s
- * route comment) — that specific text is surfaced as-is; only a
- * status-with-no-body or a network failure falls back to a generic
- * message here.
- */
 /**
  * Every real write action on upload-statement.tsx (this one included) needs
  * a real, signed-in custId to save a result against — unlike a plain read
@@ -357,10 +340,41 @@ export interface CasUploadInput {
  */
 const DEMO_ACTION_ERROR = 'Not available in demo mode — this needs a real signed-in account.';
 
+/**
+ * Real call to `POST /api/cas/upload` — a manual CAS/demat PDF upload,
+ * multipart, so this can't reuse `postJson` (JSON-only). Mirrors the web
+ * `UploadForm`'s own request exactly: a `file` field and an optional
+ * `password` field, no explicit `Content-Type` header (see below).
+ *
+ * The file part is NOT React Native's classic `{ uri, name, type }` shape.
+ * Expo SDK 57 replaces the global `fetch` with `expo/fetch`, whose
+ * multipart encoder (`winter/fetch/convertFormData.ts`) only accepts a
+ * string, a `Blob`, or an object with a `bytes()` method — a bare
+ * `{ uri }` object hits `throw new Error('Unsupported FormDataPart
+ * implementation')` INSIDE `fetch()`, before any network activity, and the
+ * catch below used to report that as "Could not reach the server. Check
+ * your connection" (reported 21 Sep: Mutual Funds PDF from the emailed
+ * CAMS statement, on a working connection — nothing was ever sent). So the
+ * file goes in as a small part object exposing exactly `bytes()`, `name`
+ * and `type`, which is the shape that encoder accepts. `type` is pinned to
+ * `application/pdf` rather than inferred: the route rejects anything else.
+ *
+ * No `Content-Type` header is set on the request itself: `fetch` computes
+ * its own multipart boundary from the `FormData` body, and a hand-set
+ * `multipart/form-data` header (without that boundary parameter) would
+ * leave the server unable to parse the body at all.
+ *
+ * The server's own failure messages already distinguish a bad password
+ * from an unreadable file from "no holdings found" (see `cas/upload`'s
+ * route comment) — that specific text is surfaced as-is; only a
+ * status-with-no-body or a genuine network failure falls back to a
+ * generic message here.
+ */
 export async function uploadCasStatement(input: CasUploadInput): Promise<SimpleApiResult> {
   if (isDemoActive()) return { ok: false, error: DEMO_ACTION_ERROR };
+
   const form = new FormData();
-  form.append('file', { uri: input.uri, name: input.name, type: 'application/pdf' } as unknown as Blob);
+  form.append('file', { name: input.name, type: 'application/pdf', bytes: async () => input.bytes } as unknown as Blob);
   if (input.password) form.append('password', input.password);
 
   let res: Response;
@@ -370,7 +384,10 @@ export async function uploadCasStatement(input: CasUploadInput): Promise<SimpleA
       { method: 'POST', credentials: 'include', body: form },
       CAS_UPLOAD_TIMEOUT_MS,
     );
-  } catch {
+  } catch (e) {
+    // Logged in dev so a client-side failure (like the multipart one
+    // above) can't hide behind the generic network message again.
+    if (__DEV__) console.warn('[uploadCasStatement] request failed:', e);
     return { ok: false, error: 'Could not reach the server. Check your connection and try again.' };
   }
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
@@ -506,6 +523,19 @@ export async function markReviewUploaded(): Promise<void> {
 
 export type ReportPdfResult = { ok: true; base64: string } | { ok: false; error: string };
 
+// Large enough to be fast, small enough that String.fromCharCode never
+// overflows the call stack spreading a big PDF's bytes as arguments.
+const BASE64_CHUNK_SIZE = 0x8000;
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += BASE64_CHUNK_SIZE) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + BASE64_CHUNK_SIZE));
+  }
+  return btoa(binary);
+}
+
 /**
  * Real call to `GET /api/review/report.pdf` — the exact same PDF web's own
  * "Download report" button opens (confirmed against `Reports.tsx`: a
@@ -516,12 +546,17 @@ export type ReportPdfResult = { ok: true; base64: string } | { ok: false; error:
  * needed the way `/link`'s WebView flow needs one, since this is a plain
  * `fetch` carrying the same session every other call here already does.
  *
- * Read via `Response.blob()` + `FileReader.readAsDataURL`, not
- * `.arrayBuffer()` — RN's `FileReader` already produces a base64 data URL
- * directly, exactly the shape `expo-file-system`'s `writeAsStringAsync`
- * needs to write it back out as a real file; hand-rolling an ArrayBuffer-
- * to-base64 conversion would just reimplement what `FileReader` already
- * does correctly.
+ * Read via `Response.arrayBuffer()`, not `.blob()` — RN's `Blob` copies the
+ * response into its own native blob store and reads it back through base64
+ * regardless (the exact overhead RN's own console warning names), so
+ * `.blob()` + `FileReader.readAsDataURL` paid that cost AND a second
+ * FileReader round trip on top of it (reported 21 Sep). `.arrayBuffer()`
+ * skips the blob store; the base64 string `writeAsStringAsync` still needs
+ * is built directly here instead, chunked to stay safe on a large PDF.
+ * Deliberately not `expo-blob` (RN's own suggested fix) — a new native
+ * module this project hasn't confirmed is in Expo Go's compiled set, the
+ * same category of risk that broke Expo Go once already (see login.tsx's
+ * OTP-autofill history) for a warning, not a functional bug.
  */
 export async function fetchReportPdf(): Promise<ReportPdfResult> {
   let res: Response;
@@ -541,18 +576,12 @@ export async function fetchReportPdf(): Promise<ReportPdfResult> {
   if (!res.ok) {
     return { ok: false, error: describeHttpError(res.status) };
   }
-  const blob = await res.blob();
-  const base64 = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Could not read the downloaded report.'));
-    reader.onload = () => {
-      const result = typeof reader.result === 'string' ? reader.result : '';
-      // `readAsDataURL` yields "data:application/pdf;base64,<the bytes>" —
-      // only the part after the comma is the base64 payload itself.
-      resolve(result.split(',')[1] ?? '');
-    };
-    reader.readAsDataURL(blob);
-  }).catch(() => '');
+  let base64: string;
+  try {
+    base64 = arrayBufferToBase64(await res.arrayBuffer());
+  } catch {
+    return { ok: false, error: 'Could not read the downloaded report.' };
+  }
   if (!base64) return { ok: false, error: 'Could not read the report. Try again.' };
   return { ok: true, base64 };
 }

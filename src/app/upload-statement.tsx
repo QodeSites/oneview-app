@@ -1,9 +1,20 @@
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
+import { File as FsFile } from 'expo-file-system';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
@@ -121,6 +132,26 @@ export default function UploadStatementScreen() {
     setTimeout(() => router.replace('/performance'), 1100);
   }, [router]);
 
+  /**
+   * `router.back()` alone can leave a reader stuck with no way off this
+   * screen at all (reported 22 Sep, iOS: tapped in from AggregatorTrouble
+   * — the "your data hasn't come through yet" gate — then had no way
+   * back). This screen is pushed from four different places (More,
+   * Holdings, PageHeader's banner, AggregatorTrouble), all real pushes, so
+   * `back()` should normally have somewhere to go — but iOS has no
+   * system-level fallback the way Android's back gesture does, so if
+   * anything about that history is ever missing (a fresh deep link, a
+   * dev-reload that drops the stack, or a case not yet found), iOS shows
+   * nothing happening at all when Close is tapped, while Android's own
+   * gesture masks the same gap. `canGoBack()` makes the close action
+   * itself safe regardless of the exact cause: back if there's somewhere
+   * to go, otherwise straight to the dashboard rather than nowhere.
+   */
+  function close() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/performance');
+  }
+
   return (
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -128,7 +159,7 @@ export default function UploadStatementScreen() {
           <Text style={styles.headerTitle}>Upload a statement</Text>
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.back()}
+            onPress={close}
             hitSlop={12}
             style={({ pressed }) => pressed && styles.pressed}>
             <Text style={styles.headerClose}>Close</Text>
@@ -275,14 +306,45 @@ function LinkChip({ href, children }: { href: string; children: string }) {
  * sends one by email.
  */
 function ManualUploadForm({ onSuccess }: { onSuccess: () => void }) {
-  const [file, setFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  // The bytes, not the picked URI — see `pick()`.
+  const [file, setFile] = useState<{ name: string; bytes: Uint8Array } | null>(null);
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  /**
+   * Reads the picked PDF's bytes right here, at pick time, rather than
+   * holding its URI until submit. Two reasons, one per platform: a URI
+   * can stop being readable in the seconds-to-minutes between picking and
+   * submitting (an Android content grant, an iOS temp copy the OS may
+   * clear), and a read problem is far better reported the moment the file
+   * is chosen than after the password has been typed. It also means the
+   * upload itself no longer depends on either platform's path rules.
+   *
+   * How each platform's read was checked (by reading expo-file-system's
+   * and expo-document-picker's native source — not yet run on a device):
+   * - Android: the picker's copy lands in `context.cacheDir` as a plain
+   *   `file://` path, which expo-file-system's `FilePermissionService`
+   *   can refuse ("Missing 'READ' permission", reported 21 Sep on the
+   *   emailed CAMS PDF). A `content://` URI skips that check entirely and
+   *   is read through the ContentResolver with the grant the picker just
+   *   issued — so Android asks for the document itself, no copy.
+   * - iOS: the picker always asks the OS for a sandbox copy
+   *   (`asCopy: true`) and, with the option below, moves it under the app's
+   *   caches directory — which the file API allows for read and write. The
+   *   file API also takes security-scoped access itself when reading, and
+   *   defers any path outside its own directories to the OS rather than
+   *   refusing it. So iOS keeps the copy and reads it the same way.
+   * The picker supplies the real display name, MIME type and size on both
+   * (unlike `File.pickFileAsync`, whose JS `name` is just the URI's tail —
+   * an opaque `msf:…` id for an Android document).
+   */
   async function pick() {
     setError('');
-    const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+    const result = await DocumentPicker.getDocumentAsync({
+      type: 'application/pdf',
+      copyToCacheDirectory: Platform.OS !== 'android',
+    });
     if (result.canceled) return;
     const asset = result.assets?.[0];
     if (!asset) return;
@@ -295,14 +357,30 @@ function ManualUploadForm({ onSuccess }: { onSuccess: () => void }) {
       setError('That file is larger than 10MB. Please upload the statement on its own.');
       return;
     }
-    setFile(asset);
+    let bytes: Uint8Array;
+    try {
+      bytes = await new FsFile(asset.uri).bytes();
+    } catch (e) {
+      if (__DEV__) console.warn('[upload-statement] could not read the picked file:', e);
+      setError('Could not open that file. Please pick the PDF again.');
+      return;
+    }
+    if (bytes.length === 0) {
+      setError('That file is empty. Please pick the PDF you were emailed.');
+      return;
+    }
+    if (bytes.length > MAX_FILE_BYTES) {
+      setError('That file is larger than 10MB. Please upload the statement on its own.');
+      return;
+    }
+    setFile({ name: asset.name, bytes });
   }
 
   async function submit() {
     if (!file) return;
     setBusy(true);
     setError('');
-    const result = await uploadCasStatement({ uri: file.uri, name: file.name, password: password || undefined });
+    const result = await uploadCasStatement({ bytes: file.bytes, name: file.name, password: password || undefined });
     if (!result.ok) {
       setError(result.error);
       setBusy(false);
