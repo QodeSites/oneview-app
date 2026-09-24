@@ -27,6 +27,22 @@ import type { AnalysisState, BuildingState } from '@/lib/reviewApi';
  * the consent. Upload is the one action here that doesn't depend on
  * that network at all.
  *
+ * 22 Sep: reordered so upload leads (highlighted, was second under
+ * WhatsApp) and WhatsApp trails (no longer highlighted) — a human is the
+ * fallback once both self-serve options have been offered, not the
+ * default first tap. "Link another account" shortened to "Link account"
+ * (same action). The elapsed-time footer ("Still checking in the
+ * background…") is gone too — reported showing an 1118-minute clock
+ * (~18.6 hours), which the mobile `/api/mobile/review` route's own
+ * `building.startedAt` explains: it falls back through the refresh
+ * sweep's own clock to `presence.consent.requestedAt` (the consent
+ * row's `created_at`) when no sweep is running, so a stale, long-ago
+ * consent for the same account — from earlier testing, not this attempt
+ * — reads as "still checking" for however long it's actually been. Not
+ * something this screen can fix (it only receives the number), so it's
+ * removed instead: the screen's own "updates on its own" line above
+ * already says everything the footer was there to say.
+ *
  * There is no polling here the way the web version's `router.refresh()`
  * interval has — `app-tabs.tsx`'s own `useRemoteData` re-fetches on
  * pull-to-refresh (its `TabsGate` now actually wraps this in a
@@ -62,7 +78,7 @@ export function BuildingReview({ building }: { building: BuildingState }) {
 
   const overdue = elapsedSeconds * 1000 > FETCH_BUDGET_MS;
 
-  if (overdue) return <AggregatorTrouble elapsedSeconds={elapsedSeconds} />;
+  if (overdue) return <AggregatorTrouble />;
 
   return (
     <View style={styles.container}>
@@ -147,9 +163,9 @@ export function AnalysisBuilding({ analysis }: { analysis: AnalysisState }) {
               message us and we&apos;ll look into it.
             </Text>
             <Pressable
-              style={({ pressed }) => [styles.linkAgainButton, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
               onPress={() => openWhatsApp("Hi, my OneView dashboard is still building and I need a hand.")}>
-              <Text style={styles.linkAgainButtonText}>Message us on WhatsApp</Text>
+              <Text style={styles.secondaryButtonText}>Message us on WhatsApp</Text>
             </Pressable>
           </>
         ) : null}
@@ -158,10 +174,8 @@ export function AnalysisBuilding({ analysis }: { analysis: AnalysisState }) {
   );
 }
 
-function AggregatorTrouble({ elapsedSeconds }: { elapsedSeconds: number }) {
+function AggregatorTrouble() {
   const router = useRouter();
-  const minutes = Math.floor(elapsedSeconds / 60);
-  const seconds = elapsedSeconds % 60;
   const [uploadPressed, setUploadPressed] = useState(false);
 
   return (
@@ -172,27 +186,19 @@ function AggregatorTrouble({ elapsedSeconds }: { elapsedSeconds: number }) {
           Nothing you did — your banks and brokers haven&apos;t sent it. We&apos;re still asking, and this screen
           updates on its own the moment it arrives.
         </Text>
-        <Pressable
-          style={({ pressed }) => [styles.whatsappButton, pressed && styles.pressed]}
-          onPress={() => {
-            const text = "Hi, my OneView data hasn't come through and I need a hand.";
-            Linking.openURL(`https://wa.me/${CONTACT_PHONE.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`).catch(
-              () => {},
-            );
-          }}>
-          <Text style={styles.whatsappButtonText}>Message us on WhatsApp</Text>
-        </Pressable>
-        {/* The actual fix, not just a way to ask for one — CAMS/KFin/NSDL/
-            CDSL not delivering doesn't stop a statement upload from
-            working; it's a completely separate path to the same data,
-            and the one action here that doesn't route back through the
-            same network that's already failing. */}
+        {/* First, and the only highlighted action — the actual fix, not
+            just a way to ask for one. CAMS/KFin/NSDL/CDSL not delivering
+            doesn't stop a statement upload from working; it's a completely
+            separate path to the same data, and the one action here that
+            doesn't route back through the same network that's already
+            failing (reordered to lead 22 Sep, on request — it used to sit
+            second, under WhatsApp). */}
         <Link href="/upload-statement" asChild>
           <Pressable
             onPressIn={() => setUploadPressed(true)}
             onPressOut={() => setUploadPressed(false)}
-            style={StyleSheet.flatten([styles.linkAgainButton, uploadPressed && styles.pressed])}>
-            <Text style={styles.linkAgainButtonText}>Upload your holdings instead</Text>
+            style={StyleSheet.flatten([styles.primaryButton, uploadPressed && styles.pressed])}>
+            <Text style={styles.primaryButtonText}>Upload your holdings instead</Text>
           </Pressable>
         </Link>
         {/* Missing entirely until now (reported 16 Sep): someone who backed
@@ -202,18 +208,28 @@ function AggregatorTrouble({ elapsedSeconds }: { elapsedSeconds: number }) {
             waiting, and there was no way back into the linking journey to
             try again or add a different one, only a support contact. */}
         <Pressable
-          style={({ pressed }) => [styles.linkAgainButton, pressed && styles.pressed]}
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
           onPress={() => router.push({ pathname: '/link', params: { force: '1' } })}>
-          <Text style={styles.linkAgainButtonText}>Link another account</Text>
+          <Text style={styles.secondaryButtonText}>Link account</Text>
+        </Pressable>
+        {/* Last, and no longer highlighted (22 Sep) — a human is the
+            fallback once the two self-serve options above have been seen,
+            not the first thing offered. */}
+        <Pressable
+          style={({ pressed }) => [styles.secondaryButton, pressed && styles.pressed]}
+          onPress={() => {
+            const text = "Hi, my OneView data hasn't come through and I need a hand.";
+            Linking.openURL(`https://wa.me/${CONTACT_PHONE.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`).catch(
+              () => {},
+            );
+          }}>
+          <Text style={styles.secondaryButtonText}>Message us on WhatsApp</Text>
         </Pressable>
         <Text style={styles.explain}>
           Your consent is valid and our request was accepted — what hasn&apos;t happened is delivery. Holdings reach
           us through the RBI&apos;s Account Aggregator network, which collects them from CAMS and KFin for mutual
           funds and NSDL and CDSL for stocks. Those systems intermittently fail to return data, and there is nothing
           on this screen that can hurry them.
-        </Text>
-        <Text style={styles.foot}>
-          Still checking in the background · {minutes}m {seconds}s since the request went out.
         </Text>
       </View>
     </View>
@@ -296,22 +312,24 @@ const styles = StyleSheet.create({
     color: QodeColor.textMuted,
     marginTop: QodeSpace[4],
   },
-  whatsappButton: {
+  // The one highlighted action on either screen — AggregatorTrouble's
+  // upload, AnalysisBuilding's own slow-build WhatsApp button before this
+  // rename existed as a plain secondaryButton with nothing above it.
+  primaryButton: {
     backgroundColor: QodeColor.accent,
     borderRadius: QodeRadius.md,
     paddingVertical: 13,
     alignItems: 'center',
     marginTop: QodeSpace[4],
   },
-  whatsappButtonText: {
+  primaryButtonText: {
     fontFamily: QodeFont.ui,
     fontSize: 14,
     color: QodeColor.textOnAccent,
   },
-  // Quieter than the WhatsApp button — that one is the primary action for
-  // "our own request is stuck," this one is for "let me try a different
-  // account instead," a real but secondary path out.
-  linkAgainButton: {
+  // Quieter than primaryButton — every other action on both screens: a
+  // real path out, just not the one led with.
+  secondaryButton: {
     borderWidth: 1,
     borderColor: QodeColor.controlBorder,
     borderRadius: QodeRadius.md,
@@ -319,7 +337,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: QodeSpace[2],
   },
-  linkAgainButtonText: {
+  secondaryButtonText: {
     fontFamily: QodeFont.uiRegular,
     fontSize: 13.5,
     color: QodeColor.textSecondary,
