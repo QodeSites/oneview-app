@@ -249,10 +249,15 @@ export default function LinkAccountsScreen() {
           {/* Deliberately just "Close", not a back arrow — the WebView's
               own multi-step FinVU journey has its own internal navigation
               (Open Question #3 in the spec); this native chrome should not
-              also offer a "back" that fights it. */}
+              also offer a "back" that fights it. `canGoBack()` guarded, not
+              a bare `router.back()` — same fix as upload-statement.tsx's own
+              Close button (reported 22 Sep, iOS): a reader with nothing to
+              go back to would otherwise see Close do nothing at all, with
+              no system-level fallback the way Android's back gesture gives
+              them one. */}
           <Pressable
             accessibilityRole="button"
-            onPress={() => router.back()}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace('/performance'))}
             hitSlop={12}
             style={({ pressed }) => pressed && styles.pressed}>
             <Text style={styles.close}>Close</Text>

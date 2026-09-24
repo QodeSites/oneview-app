@@ -124,7 +124,13 @@ export default function AppTabs() {
   }, [waiting, revalidate]);
 
   return (
-    <Tabs>
+    // `initialRoute`, not the router's default `firstRoute`: Android back
+    // from any tab returns to Performance (the anchor named in
+    // `(tabs)/_layout.tsx` — see its comment for why "first" was the wrong
+    // tab entirely), and a back press already on Performance falls through
+    // to the OS, closing the app, as the last tab in a back chain should.
+    // iOS has no hardware back, so this is Android-only in practice.
+    <Tabs options={{ backBehavior: 'initialRoute' }}>
       <TabsGate review={review} />
       <TabList asChild>
         <BottomBar

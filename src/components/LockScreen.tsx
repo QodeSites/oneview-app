@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Path, Rect, Svg } from 'react-native-svg';
 
@@ -34,6 +34,23 @@ export function LockScreen() {
   useEffect(() => {
     if (locked) void unlock();
   }, [locked, unlock]);
+
+  /**
+   * This is an `absoluteFill` overlay, not a `Modal` — so unlike
+   * `UpdatePrompt` (which gets this for free from `Modal`'s own
+   * `onRequestClose`), Android's hardware back falls straight through to
+   * the navigator underneath and moves the app around BEHIND the lock:
+   * popping a screen, or switching tabs, all invisibly, leaving the
+   * reader somewhere they never chose once they unlock. Swallowed while
+   * the lock is up — there is nothing to go back to on a screen whose
+   * whole point is that the app is not available yet. No-op on iOS,
+   * which has no hardware back.
+   */
+  useEffect(() => {
+    if (!locked && !pending) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, [locked, pending]);
 
   if (!locked && !pending) return null;
 
