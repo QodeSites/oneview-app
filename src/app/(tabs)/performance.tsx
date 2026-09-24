@@ -81,6 +81,11 @@ export default function PerformanceScreen() {
   // doesn't carry them, so they come from the Risk Profile route instead.
   const riskProfile = useRemoteData(getRiskProfileData);
   const [mixView, setMixView] = useState<'yours' | 'risk'>('yours');
+  // The mix card's ⓘ receipt — web's `mixTipPinned` (Performance.tsx),
+  // where it is a hover bubble that can also be pinned by clicking. Touch
+  // has no hover, so here the tap IS the only state, same as segments.tsx's
+  // own ⓘ metric definitions.
+  const [mixTipOpen, setMixTipOpen] = useState(false);
   const [openBand, setOpenBand] = useState<CapBand | null>(null);
   // Not `Pressable`'s own `style={(state) => ...}` form — the "Your risk
   // profile →" chip below sits inside `<Link asChild>`, whose Slot merges
@@ -355,9 +360,44 @@ export default function PerformanceScreen() {
                   Profile answers recommend. With no saved answers, the
                   second chip is a link to the Risk Profile screen instead. */}
               <View style={styles.card}>
-                <Text style={styles.cardTitle}>
-                  {showRisk ? 'Your risk profile, on the same three strategies' : 'Your mix, on the same three strategies'}
-                </Text>
+                {/* Title + ⓘ on one row, as web has it (the ⓘ only on the
+                    "Your mix" view, and only once there is a real blend to
+                    show a receipt for — `mixView === "yours" && yourBlend`
+                    there, the same two conditions here). */}
+                <View style={styles.cardTitleRow}>
+                  <Text style={[styles.cardTitle, styles.shrink]}>
+                    {showRisk
+                      ? 'Your risk profile, on the same three strategies'
+                      : 'Your mix, on the same three strategies'}
+                  </Text>
+                  {!showRisk && yourBlend ? (
+                    <Pressable
+                      onPress={() => setMixTipOpen((open) => !open)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={mixTipOpen ? 'Hide how your mix was made' : 'How your mix was made'}
+                      style={({ pressed }) => pressed && styles.pressed}>
+                      <Text style={styles.infoIcon}>ⓘ</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+                {/* The receipt (web's own word for it): the reader's own donut
+                    figures, the mapping, and the renormalisation — so "Your
+                    mix" is a calculation they can check, not a claim. Inline
+                    below the head rather than a floating bubble, matching
+                    segments.tsx's ⓘ for the same reason given there (no
+                    cursor to anchor a popover to on touch). */}
+                {mixTipOpen && !showRisk && yourBlend ? (
+                  <View style={styles.infoBubble}>
+                    <Text style={styles.infoBubbleText}>
+                      Straight from your own Segment Analysis donut: Large Cap {yoursRaw.QAW.toFixed(2)}% → Qode All
+                      Weather, Mid Cap {yoursRaw.QTF.toFixed(2)}% → Qode Tactical Fund, Small &amp; Micro{' '}
+                      {yoursRaw.QGF.toFixed(2)}% → Qode Growth Fund. Others has no equity strategy, so it is left out
+                      and the three shares are re-scaled to total 100 — giving{' '}
+                      {shownBlend.map((b) => `${b.percent}%`).join(' / ')}.
+                    </Text>
+                  </View>
+                ) : null}
                 <View style={styles.mixChips}>
                   <Pressable
                     accessibilityRole="button"
@@ -391,7 +431,13 @@ export default function PerformanceScreen() {
                         .map((s) => `${s.name} ${s.percent}%`)
                         .join(', ')}. Edit the answers on the Risk Profile page and this view follows.`
                     : yourBlend
-                      ? 'Straight from your own Segment Analysis donut, mapped onto Qode’s three strategies — Large Cap → Qode All Weather, Mid Cap → Qode Tactical Fund, Small Cap → Qode Growth Fund. Others has no equity strategy, so it is left out and the three shares are re-scaled to total 100%.'
+                      ? // Web's own caption for this view (Performance.tsx's
+                        // `rv-explain__lede`). The derivation that used to sit
+                        // here moved into the ⓘ receipt above, which is where
+                        // web keeps it too.
+                        `Your money, split the way it sits today — ${shownBlend
+                          .map((s) => `${s.name} ${s.percent}%`)
+                          .join(', ')} — large cap mapped to Qode All Weather, mid to Qode Tactical Fund, small to Qode Growth Fund. This is the mix your current allocation implies.`
                       : 'A fixed model mix of Qode’s strategies, computed daily and rebased to 100 on the same day as every other line. It is what that mix did over this window — not a portfolio tailored to you, and not advice.'}
                 </Text>
                 {/* Donut above a full-width legend, like the market-cap
@@ -610,6 +656,36 @@ const styles = StyleSheet.create({
     marginTop: -2,
   },
   cardTitle: { fontFamily: QodeFont.display, fontSize: 17, color: QodeColor.cream },
+  // `alignItems: 'center'` and a gap, not `space-between` — the ⓘ should sit
+  // right after the title, not pushed to the far edge of the card away from
+  // the words it explains (segments.tsx's own head row separates them on
+  // purpose, since its tile label and ⓘ are a label/value pair).
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: QodeSpace[2],
+  },
+  infoIcon: {
+    fontSize: 13,
+    color: QodeColor.accent,
+  },
+  // Same treatment as segments.tsx's `definitionBubble`, so the two ⓘ
+  // disclosures on the dashboard read as one affordance.
+  infoBubble: {
+    backgroundColor: QodeColor.surfaceRaised,
+    borderWidth: 1,
+    borderColor: QodeColor.accentBorder,
+    borderRadius: QodeRadius.sm,
+    paddingVertical: QodeSpace[2],
+    paddingHorizontal: QodeSpace[3],
+    marginTop: QodeSpace[2],
+  },
+  infoBubbleText: {
+    fontFamily: QodeFont.uiRegular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: QodeColor.textSecondary,
+  },
   // Lato, not inherited Playfair — confirmed against review.css's own
   // "final sweep: nothing numeric keeps the display face" rule, which lists
   // `.rv-fig` (this exact figure, "Three roads from ₹X") explicitly, with
