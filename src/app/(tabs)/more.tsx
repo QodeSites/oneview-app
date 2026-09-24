@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ProfileDetailsCard } from '@/components/ProfileDetailsCard';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { useRemoteData } from '@/hooks/use-remote-data';
+import { useScrollToTopOnFocus } from '@/hooks/use-scroll-to-top-on-focus';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { useAppLock } from '@/lib/app-lock';
 import { installedVersion } from '@/lib/app-update';
@@ -49,6 +50,8 @@ export default function MoreScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
   const tabBarHeight = useTabBarHeight();
+  // Each tab reopens at its own top — see the hook.
+  const scrollRef = useScrollToTopOnFocus();
   const profile = useRemoteData(getProfileData);
   const [signingOut, setSigningOut] = useState(false);
 
@@ -83,6 +86,7 @@ export default function MoreScreen() {
           bottom inset (as part of useTabBarHeight). */}
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
           refreshControl={

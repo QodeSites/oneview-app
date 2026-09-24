@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { ErrorView, LoadingView } from '@/components/RemoteStateView';
 import { CapBandColor, QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { useRemoteData } from '@/hooks/use-remote-data';
+import { useScrollToTopOnFocus } from '@/hooks/use-scroll-to-top-on-focus';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { money, pct } from '@/lib/format';
 import type { CapBand, FundXray } from '@/lib/mock-data';
@@ -78,6 +79,8 @@ export default function MfXrayScreen() {
   const { state, refreshing, refresh } = useRemoteData(getMfXrayData);
   const [expanded, setExpanded] = useState<string | null>(null);
   const tabBarHeight = useTabBarHeight();
+  // Each tab reopens at its own top — see the hook.
+  const scrollRef = useScrollToTopOnFocus();
 
   if (state.status === 'loading') {
     return (
@@ -106,6 +109,7 @@ export default function MfXrayScreen() {
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + QodeSpace[3] }]}
           showsVerticalScrollIndicator={false}
           refreshControl={

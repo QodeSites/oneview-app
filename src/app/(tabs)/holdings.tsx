@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { ErrorView, LoadingView } from '@/components/RemoteStateView';
 import { CapBandColor, QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { useRemoteData } from '@/hooks/use-remote-data';
+import { useScrollToTopOnFocus } from '@/hooks/use-scroll-to-top-on-focus';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { DASH, money, rupeesExact } from '@/lib/format';
 import type { AssetType, CapBand, Holding } from '@/lib/mock-data';
@@ -130,6 +131,8 @@ export default function HoldingsScreen() {
   // reported 18 Sep together).
   const [uploadCardPressed, setUploadCardPressed] = useState(false);
   const tabBarHeight = useTabBarHeight();
+  // Each tab reopens at its own top — see the hook.
+  const scrollRef = useScrollToTopOnFocus();
 
   // Bank balances aren't holdings — they stay in the portfolio total but
   // not in this list.
@@ -236,6 +239,7 @@ export default function HoldingsScreen() {
         </ScrollView>
 
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight + QodeSpace[3] }]}
           showsVerticalScrollIndicator={false}
           refreshControl={

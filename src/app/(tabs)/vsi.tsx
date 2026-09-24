@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { ErrorView, LoadingView } from '@/components/RemoteStateView';
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import { useRemoteData } from '@/hooks/use-remote-data';
+import { useScrollToTopOnFocus } from '@/hooks/use-scroll-to-top-on-focus';
 import { useTabBarHeight } from '@/hooks/use-tab-bar-height';
 import { getVsiIndicator } from '@/lib/reviewApi';
 
@@ -55,6 +56,8 @@ const START_DATE = '2006-01-01';
 export default function VsiScreen() {
   const { state, refreshing, refresh } = useRemoteData(getVsiIndicator);
   const tabBarHeight = useTabBarHeight();
+  // Each tab reopens at its own top — see the hook.
+  const scrollRef = useScrollToTopOnFocus();
 
   if (state.status === 'loading') {
     return (
@@ -84,6 +87,7 @@ export default function VsiScreen() {
     <LinearGradient colors={[QodeColor.gradientStart, QodeColor.gradientEnd]} style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={[styles.scroll, { paddingBottom: tabBarHeight + QodeSpace[3] }]}
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={QodeColor.accent} />}>
