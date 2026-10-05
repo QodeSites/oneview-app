@@ -170,6 +170,15 @@ export default function LinkAccountsScreen() {
    * tab bar — "tabs on tabs" (reported 15 Sep).
    */
   function handleNavigation(nav: WebViewNavigation) {
+    // The web link page's "Upload a statement instead" (an outage, or Finvu
+    // closed without approving) — open the app's own upload screen rather
+    // than closing onto Performance, which has nothing to upload with.
+    if (/\/review[^?#]*\?(?:[^#]*&)?upload=1(?:[&#]|$)/.test(nav.url)) {
+      reviewHandledRef.current = true;
+      router.replace('/upload-statement');
+      return;
+    }
+
     const isReview = /\/review(?:[/?]|$)/.test(nav.url) || nav.url.includes('/link/done');
     if (isReview) {
       // Only the FIRST arrival at /review this session is a real decision

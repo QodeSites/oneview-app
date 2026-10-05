@@ -11,6 +11,7 @@ import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-the
 import { useRemoteData } from '@/hooks/use-remote-data';
 import { fetchReportPdf } from '@/lib/api';
 import { useKillSwitch } from '@/lib/remote-flags';
+import { trackCta } from '@/lib/analytics';
 import { track } from '@/lib/telemetry';
 import { getReportsData } from '@/lib/reviewApi';
 
@@ -158,6 +159,7 @@ export default function ReportsScreen() {
               style={({ pressed }) => [styles.callButton, pressed && styles.pressed]}
               onPress={() => {
                 track('support_contacted', { channel: 'whatsapp' });
+                trackCta('book_call:app_reports');
                 Linking.openURL(bookACallUrl(r.contact.phone, client.name)).catch(() => {});
               }}>
               <Text style={styles.callButtonText}>Book a call with Qode</Text>

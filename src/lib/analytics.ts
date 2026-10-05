@@ -52,6 +52,19 @@ async function post(path: string, body: unknown): Promise<void> {
   }
 }
 
+/**
+ * A call-to-action tap, into the same `events` ledger as web's (`cta_click`,
+ * via /api/track, which ties it to the signed-in customer). "Book a call"
+ * opens WhatsApp, where nothing of ours can see the conversation — this is
+ * the only record the backoffice (/app/analytics) has that someone asked.
+ * PostHog's `support_contacted` still fires alongside; this is the
+ * first-party copy the business numbers are built from.
+ */
+export function trackCta(what: string): void {
+  if (!enabled) return;
+  void post('/api/track', { name: 'cta_click', props: { what } });
+}
+
 async function sendAppEvent(name: 'app_install' | 'app_open', installId: string): Promise<void> {
   await post('/api/mobile/events', {
     name,

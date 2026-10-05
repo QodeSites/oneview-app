@@ -4,6 +4,7 @@ import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { QodeColor, QodeFont, QodeRadius, QodeSpace } from '@/constants/qode-theme';
 import type { AnalysisState, BuildingState } from '@/lib/reviewApi';
+import { trackCta } from '@/lib/analytics';
 import { track } from '@/lib/telemetry';
 
 /**
@@ -103,6 +104,7 @@ const BUILD_SLOW_MS = 5 * 60_000;
 
 function openWhatsApp(text: string) {
   track('support_contacted', { channel: 'whatsapp' });
+  trackCta('support:building');
   Linking.openURL(`https://wa.me/${CONTACT_PHONE.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`).catch(
     () => {},
   );
@@ -222,6 +224,7 @@ function AggregatorTrouble() {
           onPress={() => {
             const text = "Hi, my OneView data hasn't come through and I need a hand.";
             track('support_contacted', { channel: 'whatsapp' });
+            trackCta('support:building');
             Linking.openURL(`https://wa.me/${CONTACT_PHONE.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`).catch(
               () => {},
             );
